@@ -1,0 +1,162 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+  }
+  
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+  }
+}
+
+@layer components {
+  /* 토스트 스타일 */
+  .custom-toast {
+    @apply !bg-gray-800 !text-white !rounded-full !px-6 !py-3;
+  }
+  
+  /* 프로모션 배너 */
+  .promo-banner {
+    @apply bg-gradient-to-r from-primary-500 via-primary-600 to-orange-500 text-white py-2 px-4;
+  }
+  
+  /* 상품 카드 */
+  .product-card {
+    @apply bg-white rounded-lg overflow-hidden transition-all duration-200 hover:shadow-card-hover;
+  }
+  
+  /* 할인 배지 */
+  .sale-badge {
+    @apply bg-sale-500 text-white text-xs font-bold px-2 py-1 rounded;
+  }
+  
+  /* 인기 배지 */
+  .hot-badge {
+    @apply bg-gradient-to-r from-orange-500 to-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full;
+  }
+  
+  /* 버튼 스타일 */
+  .btn-primary {
+    @apply bg-primary-500 hover:bg-primary-600 text-white font-semibold py-2.5 px-6 rounded-full transition-all duration-200 active:scale-95;
+  }
+  
+  .btn-secondary {
+    @apply bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium py-2 px-4 rounded-full transition-colors;
+  }
+  
+  .btn-sale {
+    @apply bg-sale-500 hover:bg-sale-600 text-white font-bold py-3 px-8 rounded-full animate-pulse-sale;
+  }
+  
+  /* 가격 스타일 */
+  .price-original {
+    @apply text-gray-400 line-through text-sm;
+  }
+  
+  .price-sale {
+    @apply text-sale-600 font-bold text-xl;
+  }
+  
+  .price-won {
+    @apply text-primary-600 font-bold;
+  }
+  
+  /* 타이머/카운트다운 */
+  .countdown-box {
+    @apply bg-dark-800 text-white rounded px-2 py-1 text-sm font-mono font-bold;
+  }
+  
+  /* 검색바 */
+  .search-bar {
+    @apply flex items-center bg-gray-100 rounded-full px-4 py-2 focus-within:ring-2 focus-within:ring-primary-500 transition-all;
+  }
+  
+  .search-bar input {
+    @apply bg-transparent outline-none flex-1 text-sm;
+  }
+  
+  /* 카테고리 네비게이션 */
+  .category-nav {
+    @apply flex gap-2 overflow-x-auto scrollbar-hide py-3 px-4;
+  }
+  
+  .category-pill {
+    @apply whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium bg-gray-100 hover:bg-primary-100 hover:text-primary-600 transition-colors cursor-pointer;
+  }
+  
+  .category-pill.active {
+    @apply bg-primary-500 text-white;
+  }
+  
+  /* 섹션 헤더 */
+  .section-header {
+    @apply flex items-center justify-between mb-4 px-4;
+  }
+  
+  .section-title {
+    @apply text-lg font-bold flex items-center gap-2;
+  }
+  
+  /* 쉬머 로딩 효과 */
+  .shimmer {
+    @apply relative overflow-hidden bg-gray-200;
+  }
+  
+  .shimmer::after {
+    content: '';
+    @apply absolute inset-0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    animation: shimmer 2s infinite;
+  }
+  
+  /* 스크롤바 숨기기 */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  
+  /* 플로팅 장바구니 버튼 */
+  .floating-cart {
+    @apply fixed bottom-20 right-4 z-50 bg-primary-500 text-white p-4 rounded-full shadow-lg hover:bg-primary-600 transition-all hover:scale-110;
+  }
+  
+  /* 모바일 하단 네비게이션 */
+  .bottom-nav {
+    @apply fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around py-2 px-4 z-40 md:hidden;
+  }
+  
+  .bottom-nav-item {
+    @apply flex flex-col items-center gap-1 text-gray-500 text-xs;
+  }
+  
+  .bottom-nav-item.active {
+    @apply text-primary-500;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  .line-clamp-1 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+  
+  .line-clamp-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+}

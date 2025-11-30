@@ -2,26 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import ProductCard from './ProductCard';
-import axios from 'axios';
-
-interface Product {
-  id: number;
-  name: string;
-  name_ko?: string;
-  description?: string;
-  description_ko?: string;
-  price_original: number;
-  price_krw: number;
-  image_url?: string;
-  images?: string[];
-  supplier_name?: string;
-  rating?: number;
-  review_count?: number;
-  sold_count?: number;
-  discount_percent?: number;
-  is_hot?: boolean;
-  free_shipping?: boolean;
-}
+import { productsApi, formatPrice } from '@/lib/services';
+import type { Product } from '@/types';
 
 interface ProductGridProps {
   limit?: number;
@@ -30,8 +12,8 @@ interface ProductGridProps {
   columns?: 2 | 3 | 4;
 }
 
-// DummyJSON API 상품을 우리 형식으로 변환
-interface DummyJSONProduct {
+// DummyJSON 폴백용 타입
+interface DummyProduct {
   id: number;
   title: string;
   description: string;
@@ -45,91 +27,94 @@ interface DummyJSONProduct {
   images: string[];
 }
 
-// 카테고리 매핑 (DummyJSON -> 한글)
-const categoryKoMap: Record<string, string> = {
-  'smartphones': '스마트폰',
-  'laptops': '노트북',
-  'fragrances': '향수',
-  'skincare': '스킨케어',
-  'groceries': '식료품',
-  'home-decoration': '홈데코',
-  'furniture': '가구',
-  'tops': '상의',
-  'womens-dresses': '여성 드레스',
-  'womens-shoes': '여성 신발',
-  'mens-shirts': '남성 셔츠',
-  'mens-shoes': '남성 신발',
-  'mens-watches': '남성 시계',
-  'womens-watches': '여성 시계',
-  'womens-bags': '여성 가방',
-  'womens-jewellery': '여성 주얼리',
-  'sunglasses': '선글라스',
-  'automotive': '자동차용품',
-  'motorcycle': '오토바이',
-  'lighting': '조명',
-};
-
-// 공급자 랜덤 할당
-const suppliers = ['Temu', 'AliExpress', 'Amazon', '11번가', '쿠팡'];
-const getRandomSupplier = () => suppliers[Math.floor(Math.random() * suppliers.length)];
-
-// DummyJSON 상품을 우리 형식으로 변환
-const transformProduct = (product: DummyJSONProduct): Product => {
-  const exchangeRate = 1350; // USD to KRW
-  const originalPrice = product.price / (1 - product.discountPercentage / 100);
+// DummyJSON → 우리 타입으로 변환
+const transformDummyProduct = (product: DummyProduct): Product => {
+  const exchangeRate = 1350;
+  const priceKrw = Math.round(product.price * exchangeRate);
+  const originalPriceKrw = Math.round(priceKrw / (1 - product.discountPercentage / 100));
   
   return {
     id: product.id,
-    name: product.title,
-    name_ko: `${product.brand} ${categoryKoMap[product.category] || product.category}`,
+    external_id: `dummy-${product.id}`,
+    title: product.title,
+    title_ko: product.title,
     description: product.description,
-    price_original: originalPrice,
-    price_krw: Math.round(product.price * exchangeRate),
-    image_url: product.thumbnail,
-    images: product.images,
-    supplier_name: getRandomSupplier(),
-    rating: product.rating,
-    review_count: Math.floor(Math.random() * 5000) + 100,
-    sold_count: Math.floor(Math.random() * 20000) + 500,
-    discount_percent: Math.round(product.discountPercentage),
-    is_hot: product.rating >= 4.5 || product.discountPercentage >= 15,
-    free_shipping: product.price >= 20,
+    description_ko: product.description,
+    price_original: originalPriceKrw,
+    price_final: priceKrw,
+    currency: 'KRW',
+    stock: product.stock,
+    is_active: true,
+    category: product.category,
+    tags: [product.brand],
+    shipping_days_min: 7,
+    shipping_days_max: 14,
+    images: product.images.map((url, idx) => ({
+      id: idx,
+      product_id: product.id,
+      url,
+      is_main: idx === 0,
+      sort_order: idx,
+    })),
+    created_at: new Date().toISOString(),
   };
 };
 
 export default function ProductGrid({ limit = 8, category, search, columns = 4 }: ProductGridProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchProducts = async () => {
+      setLoading(true);
+      setError(null);
+      
       try {
-        // DummyJSON API에서 상품 데이터 가져오기
+        // 먼저 실제 API 호출 시도
+        const response = await productsApi.getProducts({
+          limit,
+          category: category !== 'all' ? category : undefined,
+          search,
+        });
+        
+        if (response.items && response.items.length > 0) {
+          setProducts(response.items);
+          return;
+        }
+      } catch (apiError) {
+        console.log('API 호출 실패, DummyJSON 폴백 사용:', apiError);
+      }
+
+      // 폴백: DummyJSON API 사용
+      try {
         let url = `https://dummyjson.com/products?limit=${limit}`;
         
-        // 카테고리 필터
+        // 카테고리 매핑
         if (category && category !== 'all') {
           const categoryMap: Record<string, string> = {
             'electronics': 'smartphones',
             'fashion': 'tops',
             'home': 'home-decoration',
             'beauty': 'skincare',
-            'sports': 'automotive',
+            'sports': 'mens-shoes',
+            'automotive': 'automotive',
           };
           const mappedCategory = categoryMap[category] || category;
           url = `https://dummyjson.com/products/category/${mappedCategory}?limit=${limit}`;
         }
         
-        // 검색 필터
         if (search) {
           url = `https://dummyjson.com/products/search?q=${encodeURIComponent(search)}&limit=${limit}`;
         }
 
-        const response = await axios.get(url);
-        const transformedProducts = response.data.products.map(transformProduct);
+        const response = await fetch(url);
+        const data = await response.json();
+        const transformedProducts = data.products.map(transformDummyProduct);
         setProducts(transformedProducts);
-      } catch (error) {
-        console.error('상품을 불러오는데 실패했습니다:', error);
+      } catch (fallbackError) {
+        console.error('DummyJSON 폴백도 실패:', fallbackError);
+        setError('상품을 불러오는데 실패했습니다.');
         setProducts([]);
       } finally {
         setLoading(false);
@@ -158,6 +143,21 @@ export default function ProductGrid({ limit = 8, category, search, columns = 4 }
             </div>
           </div>
         ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-16 bg-gray-50 rounded-xl">
+        <div className="text-5xl mb-4">😢</div>
+        <p className="text-gray-500 text-lg">{error}</p>
+        <button 
+          onClick={() => window.location.reload()}
+          className="mt-4 px-6 py-2 bg-primary-500 text-white rounded-full hover:bg-primary-600"
+        >
+          다시 시도
+        </button>
       </div>
     );
   }

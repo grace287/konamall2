@@ -11,7 +11,7 @@ import { useState } from 'react';
 
 export default function CartPage() {
   const { items, removeItem, updateQuantity, getTotalKrw, clearCart } = useCartStore();
-  const [selectedItems, setSelectedItems] = useState<string[]>(items.map(i => i.id));
+  const [selectedItems, setSelectedItems] = useState<number[]>(items.map(i => i.id));
   const [couponCode, setCouponCode] = useState('');
 
   const formatPrice = (price: number) => {
@@ -34,7 +34,7 @@ export default function CartPage() {
     }
   };
 
-  const toggleSelectItem = (id: string) => {
+  const toggleSelectItem = (id: number) => {
     setSelectedItems(prev => 
       prev.includes(id) 
         ? prev.filter(i => i !== id)

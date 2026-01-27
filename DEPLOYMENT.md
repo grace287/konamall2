@@ -40,9 +40,20 @@ sudo apt-get install docker-compose-plugin
 # Git 설치
 sudo apt-get install git
 
-# Docker 권한 설정
+# Docker 권한 설정 (필수!)
 sudo usermod -aG docker $USER
+
+# 권한 적용 - 다음 중 하나 선택:
+# 방법 1: 즉시 적용 (현재 세션에만)
 newgrp docker
+
+# 방법 2: 로그아웃 후 재로그인 (완전 적용, 권장)
+# exit를 입력하고 다시 SSH 접속
+
+# Docker 설치 확인
+docker --version
+docker-compose --version
+docker ps  # 권한 테스트
 ```
 
 ---
@@ -308,6 +319,30 @@ cat backup.sql | docker-compose -f docker-compose.prod.yml exec -T postgres psql
 ---
 
 ## ❗ 문제 해결
+
+### Docker 권한 오류 (Permission Denied)
+
+Docker 명령어 실행 시 `Permission denied` 오류가 발생하는 경우:
+
+```bash
+# 현재 사용자를 docker 그룹에 추가
+sudo usermod -aG docker $USER
+
+# 그룹 변경사항 즉시 적용 (방법 1: 권장)
+newgrp docker
+
+# 또는 로그아웃 후 다시 로그인 (방법 2)
+# exit 후 다시 SSH 접속
+
+# 권한 확인
+groups
+docker ps
+
+# 임시 해결책: sudo 사용 (권장하지 않음)
+sudo docker-compose -f docker-compose.prod.yml build
+```
+
+**중요**: `newgrp docker` 실행 후에도 권한이 없다면, 완전히 로그아웃한 뒤 다시 SSH 접속해야 합니다.
 
 ### 컨테이너가 시작되지 않음
 

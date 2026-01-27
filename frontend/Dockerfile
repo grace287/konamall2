@@ -4,14 +4,20 @@ FROM node:20-alpine AS base
 FROM base AS deps
 WORKDIR /app
 
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json* ./
+RUN npm ci
 
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY package.json package-lock.json* ./
+COPY tsconfig.json ./
+COPY next.config.mjs ./
+COPY postcss.config.js ./
+COPY tailwind.config.ts ./
+COPY public ./public
+COPY src ./src
 
 ENV NEXT_TELEMETRY_DISABLED 1
 

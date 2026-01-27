@@ -401,6 +401,26 @@ docker-compose -f docker-compose.prod.yml ps postgres
 docker-compose -f docker-compose.prod.yml exec backend python -c "from app.db.session import engine; engine.connect()"
 ```
 
+### Frontend 빌드 오류 (Module not found)
+
+`Module not found: Can't resolve '@/lib/api'` 같은 오류가 발생하는 경우:
+
+```bash
+# 서버에서 파일 존재 확인
+cd ~/konamall2/frontend
+ls -la src/lib/
+
+# 파일이 없다면 최신 코드 가져오기
+git fetch origin
+git reset --hard origin/main
+
+# 캐시 없이 재빌드
+sudo docker-compose build --no-cache frontend
+sudo docker-compose up -d
+```
+
+**원인**: `.gitignore` 설정으로 인해 필요한 파일이 Git에 커밋되지 않았을 수 있습니다.
+
 ---
 
 ## 🔐 보안 체크리스트

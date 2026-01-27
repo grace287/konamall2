@@ -21,7 +21,8 @@
 
 ### Infrastructure
 - **Container**: Docker + Docker Compose
-- **Proxy**: API rewrites via Next.js
+- **Proxy**: Nginx (프로덕션)
+- **SSL/TLS**: Let's Encrypt
 
 ## 📁 프로젝트 구조
 
@@ -49,6 +50,37 @@ konamall2/
 ```
 
 ## 🚀 시작하기
+
+### 개발 환경 (Docker)
+
+```bash
+# 프로젝트 폴더로 이동
+cd konamall2
+
+# 환경 변수 설정
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env.local
+
+# Docker Compose로 실행
+docker-compose up -d
+
+# 데이터베이스 마이그레이션
+docker-compose exec backend alembic upgrade head
+```
+
+### 프로덕션 배포
+
+프로덕션 환경 배포는 [DEPLOYMENT.md](DEPLOYMENT.md) 문서를 참고하세요.
+
+```bash
+# 환경 변수 설정
+cp .env.production.example .env.production
+# .env.production 파일 수정
+
+# 배포 스크립트 실행
+./deploy.sh prod    # Linux/Mac
+deploy.bat prod     # Windows
+```
 
 ### 1. Docker로 실행 (권장)
 
@@ -147,6 +179,12 @@ CORS_ORIGINS=["http://localhost:3000"]
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
+
+## 📜 문서
+
+- 📘 [배포 가이드](DEPLOYMENT.md) - 프로덕션 환경 배포
+- 📗 [API 문서](http://localhost:8000/docs) - FastAPI 자동 생성 문서
+- 📕 [외부 주문 처리](docs/place_external_orders_README.md)
 
 ## 📜 라이선스
 

@@ -48,6 +48,8 @@ coverage.xml
 
 # Environments
 .env
+.env.production
+.env.development
 .venv
 env/
 venv/
@@ -102,3 +104,12 @@ yarn-error.log*
 
 # Docker
 *.pid
+
+# SSL Certificates
+nginx/ssl/*.pem
+nginx/ssl/*.key
+nginx/ssl/*.crt
+
+# Backups
+*.sql
+backup/

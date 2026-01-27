@@ -88,6 +88,18 @@ services:
       - /app/.next
     command: npm run dev
 
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: konamall-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      - frontend
+      - backend
+
 volumes:
   postgres_data:
   redis_data:

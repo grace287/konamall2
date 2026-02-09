@@ -139,17 +139,53 @@ export const cartApi = {
 };
 
 // ============ Categories API ============
+// 백엔드에는 /api/categories 가 없고 /api/products/categories/list (문자열 배열)만 있음.
+// 실패 시(백엔드 미실행 등) 정적 CATEGORIES 반환으로 콘솔 에러·연결 거부 방지.
 export const categoriesApi = {
-  // 카테고리 목록 조회
   getAll: async (): Promise<Category[]> => {
-    const response = await api.get('/api/categories/');
-    return response.data;
+    try {
+      const list = await productsApi.getCategories();
+      if (list && list.length > 0) {
+        return list.map((name, i) => {
+          const slug = (name || '').toLowerCase().replace(/\s+/g, '-').replace(/&/g, '');
+          const match = CATEGORIES.find(
+            (c) => c.slug === slug || c.name.toLowerCase() === (name || '').toLowerCase()
+          );
+          return (
+            match || {
+              id: i + 1,
+              name: name || '',
+              name_ko: name || '',
+              slug: slug || `cat-${i}`,
+              icon: '🏷️',
+              color: 'bg-gray-100',
+            }
+          );
+        });
+      }
+    } catch (_) {
+      // 연결 거부 등 시 정적 목록 사용
+    }
+    return [...CATEGORIES];
   },
 
-  // 카테고리 상세 조회
   getBySlug: async (slug: string): Promise<Category> => {
-    const response = await api.get(`/api/categories/${slug}`);
-    return response.data;
+    const found = CATEGORIES.find((c) => c.slug === slug);
+    if (found) return found;
+    try {
+      const list = await productsApi.getCategories();
+      const name = list?.find((c) => c.toLowerCase().replace(/\s+/g, '-') === slug);
+      if (name)
+        return {
+          id: 0,
+          name,
+          name_ko: name,
+          slug,
+          icon: '🏷️',
+          color: 'bg-gray-100',
+        };
+    } catch (_) {}
+    return { id: 0, name: slug, name_ko: slug, slug, icon: '🏷️', color: 'bg-gray-100' };
   },
 };
 

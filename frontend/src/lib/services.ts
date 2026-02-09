@@ -155,23 +155,19 @@ export const categoriesApi = {
 
 // ============ Orders API ============
 export const ordersApi = {
-  // 주문 생성
-  createOrder: async (params: {
-    shipping_name: string;
-    shipping_phone: string;
-    shipping_zip_code: string;
-    shipping_address1: string;
-    shipping_address2?: string;
-    payment_method: string;
-    note?: string;
-  }) => {
-    const response = await api.post('/api/orders/', params);
+  // 주문 생성 (장바구니 기반, address_id 사용)
+  createOrder: async (params: { address_id: number; payment_method?: string; note?: string }) => {
+    const response = await api.post('/api/orders', {
+      address_id: params.address_id,
+      payment_method: params.payment_method || 'kakao_pay',
+      note: params.note,
+    });
     return response.data;
   },
 
   // 주문 목록 조회
-  getOrders: async (params?: { skip?: number; limit?: number }) => {
-    const response = await api.get('/api/orders/', { params });
+  getOrders: async (params?: { page?: number; limit?: number }) => {
+    const response = await api.get('/api/orders', { params: { page: params?.page || 1, limit: params?.limit || 20 } });
     return response.data;
   },
 
@@ -184,6 +180,57 @@ export const ordersApi = {
   // 주문 취소
   cancelOrder: async (orderId: number) => {
     const response = await api.post(`/api/orders/${orderId}/cancel`);
+    return response.data;
+  },
+};
+
+// ============ Payments API ============
+export const paymentsApi = {
+  prepare: async (orderId: number, gateway: string = 'kakao_pay') => {
+    const response = await api.post('/api/payments/prepare', { order_id: orderId, gateway });
+    return response.data;
+  },
+  approve: async (orderId: number, paymentId: string, pgToken: string, gateway: string = 'kakao_pay') => {
+    const response = await api.post('/api/payments/approve', {
+      order_id: orderId,
+      payment_id: paymentId,
+      pg_token: pgToken,
+      gateway,
+    });
+    return response.data;
+  },
+  status: async (paymentId: string, gateway: string = 'kakao_pay') => {
+    const response = await api.get(`/api/payments/status/${paymentId}`, { params: { gateway } });
+    return response.data;
+  },
+};
+
+// ============ Addresses API ============
+export interface AddressOut {
+  id: number;
+  recipient_name: string;
+  phone: string;
+  zip_code: string;
+  address1: string;
+  address2?: string;
+  is_default: boolean;
+  created_at?: string;
+}
+
+export const addressesApi = {
+  list: async (): Promise<AddressOut[]> => {
+    const response = await api.get('/api/users/addresses');
+    return response.data;
+  },
+  create: async (body: {
+    recipient_name: string;
+    phone: string;
+    zip_code: string;
+    address1: string;
+    address2?: string;
+    is_default?: boolean;
+  }) => {
+    const response = await api.post('/api/users/addresses', body);
     return response.data;
   },
 };
@@ -214,7 +261,7 @@ export const usersApi = {
 
   // 내 정보 수정
   updateMe: async (params: { name?: string; phone?: string }) => {
-    const response = await api.put('/api/users/me', params);
+    const response = await api.patch('/api/users/me', params);
     return response.data;
   },
 };

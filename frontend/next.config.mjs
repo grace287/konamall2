@@ -29,7 +29,7 @@ const nextConfig = {
   // API 프록시 설정 (개발 환경용)
   async rewrites() {
     // 프로덕션에서는 환경 변수 사용
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
     
     return [
       {

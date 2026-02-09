@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List
 
 from app.db.session import get_db
-from app.db.models import User
-from app.schemas.user import UserCreate, UserOut, TokenWithUser, UserLogin
+from app.db.models import User, Address
+from app.schemas.user import UserCreate, UserOut, TokenWithUser, UserLogin, AddressCreate, AddressResponse
 from app.core.security import get_password_hash, verify_password, create_access_token, create_refresh_token, decode_token
 
 router = APIRouter()
@@ -155,3 +155,52 @@ async def update_me(
         current_user.phone = phone
     db.commit()
     return {"message": "Updated successfully"}
+
+
+# ---------- 배송지 ----------
+def _address_to_response(a: Address) -> AddressResponse:
+    return AddressResponse(
+        id=a.id,
+        recipient_name=a.recipient_name,
+        phone=a.phone or "",
+        zip_code=a.postal_code,
+        address1=a.address_line1,
+        address2=a.address_line2,
+        is_default=a.is_default or False,
+        created_at=a.created_at,
+    )
+
+
+@router.get("/addresses", response_model=List[AddressResponse])
+async def list_addresses(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """내 배송지 목록"""
+    addrs = db.query(Address).filter(Address.user_id == current_user.id).order_by(Address.is_default.desc()).all()
+    return [_address_to_response(a) for a in addrs]
+
+
+@router.post("/addresses", response_model=AddressResponse, status_code=status.HTTP_201_CREATED)
+async def create_address(
+    body: AddressCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """배송지 추가"""
+    if body.is_default:
+        db.query(Address).filter(Address.user_id == current_user.id).update({"is_default": False})
+    addr = Address(
+        user_id=current_user.id,
+        recipient_name=body.recipient_name,
+        phone=body.phone,
+        postal_code=body.zip_code,
+        address_line1=body.address1,
+        address_line2=body.address2,
+        is_default=body.is_default,
+        country="KR",
+    )
+    db.add(addr)
+    db.commit()
+    db.refresh(addr)
+    return _address_to_response(addr)

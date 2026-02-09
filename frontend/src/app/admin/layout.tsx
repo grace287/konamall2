@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { api } from '@/lib/api';
-import { LayoutDashboard, Users, ShoppingBag } from 'lucide-react';
+import { LayoutDashboard, Users, ShoppingBag, Package } from 'lucide-react';
 
 export default function AdminLayout({
   children,
@@ -47,6 +47,7 @@ export default function AdminLayout({
     { href: '/admin', label: '대시보드', icon: LayoutDashboard },
     { href: '/admin/users', label: '회원 목록', icon: Users },
     { href: '/admin/orders', label: '주문 목록', icon: ShoppingBag },
+    { href: '/admin/products', label: '상품 관리', icon: Package },
   ];
 
   return (

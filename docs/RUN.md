@@ -62,10 +62,10 @@ pip install -e ".[dev]"
 alembic upgrade head
 
 # 6) API 서버 실행
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
 ```
 
-- 정상이면 **http://localhost:8000** 에서 API, **http://localhost:8000/docs** 에서 Swagger UI 확인.
+- 정상이면 **http://localhost:8080** 에서 API, **http://localhost:8080/docs** 에서 Swagger UI 확인.
 
 ### 1.4 Celery 워커 실행 (선택, 비동기 작업용)
 
@@ -89,7 +89,7 @@ npm install
 
 # 3) API 주소 설정
 # frontend/.env.local 생성 (또는 .env)
-# NEXT_PUBLIC_API_URL=http://localhost:8000
+# NEXT_PUBLIC_API_URL=http://localhost:8080
 
 # 4) 개발 서버 실행
 npm run dev
@@ -102,7 +102,7 @@ npm run dev
 | 순서 | 대상        | 명령어 / 위치 |
 |------|-------------|----------------|
 | 1    | Postgres, Redis | Docker 또는 로컬 설치 후 실행 |
-| 2    | Backend     | `cd backend` → `alembic upgrade head` → `uvicorn app.main:app --reload --port 8000` |
+| 2    | Backend     | `cd backend` → `alembic upgrade head` → `uvicorn app.main:app --reload --port 8080` |
 | 3    | (선택) Celery | `cd backend` → `celery -A app.celery_app worker --loglevel=info` |
 | 4    | Frontend    | `cd frontend` → `npm run dev` |
 
@@ -136,8 +136,8 @@ docker compose exec backend alembic upgrade head
 | 서비스   | URL |
 |----------|-----|
 | Frontend | http://localhost:3000 |
-| Backend API | http://localhost:8000 |
-| API Docs | http://localhost:8000/docs |
+| Backend API | http://localhost:8080 |
+| API Docs | http://localhost:8080/docs |
 | Nginx (80) | http://localhost (프록시) |
 
 ### 2.3 중지·삭제
@@ -225,7 +225,7 @@ docker compose -f docker-compose.prod.yml down
 ### 5.1 API 상태
 
 ```bash
-curl http://localhost:8000/health
+curl http://localhost:8080/health
 # 예상: {"status":"healthy"}
 ```
 

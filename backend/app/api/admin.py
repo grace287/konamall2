@@ -1,16 +1,17 @@
 """
 Admin API Router
-관리자 전용: 회원 목록, 주문 목록
+관리자 전용: 회원 목록, 주문 목록, 상품 목록
 """
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 
 from app.db.session import get_db
-from app.db.models import User, Order
+from app.db.models import User, Order, Product
 from app.core.deps import get_admin_user
 from app.schemas.user import UserOut
 from app.schemas.order import OrderOut
+from app.schemas.product import ProductOut
 from app.db.models import OrderStatus as OrderStatusEnum
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -83,8 +84,26 @@ async def admin_stats(
     users_total = db.query(User).count()
     orders_total = db.query(Order).count()
     orders_paid = db.query(Order).filter(Order.paid_at.isnot(None)).count()
+    products_total = db.query(Product).count()
     return {
         "users_total": users_total,
         "orders_total": orders_total,
         "orders_paid": orders_paid,
+        "products_total": products_total,
     }
+
+
+@router.get("/products", response_model=List[ProductOut])
+async def list_products(
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    category: Optional[str] = None,
+    current_user: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    """관리자: 전체 상품 목록 (최신순)."""
+    q = db.query(Product).order_by(Product.created_at.desc())
+    if category:
+        q = q.filter(Product.category == category)
+    products = q.offset((page - 1) * limit).limit(limit).all()
+    return products

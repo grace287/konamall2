@@ -25,6 +25,7 @@ export default function ProductDetailPage() {
   const [quantity, setQuantity] = useState(1);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
   const [isLiked, setIsLiked] = useState(false);
+  const [detailTab, setDetailTab] = useState<'detail' | 'shipping' | 'reviews'>('detail');
   
   const addItem = useCartStore((state) => state.addItem);
 
@@ -395,12 +396,47 @@ export default function ProductDetailPage() {
               </button>
             </div>
 
-            {/* 상품 설명 */}
+            {/* 알리/테무 스타일 탭: 상세정보 / 배송·교환 / 리뷰 */}
             <div className="mt-8 pt-8 border-t border-gray-200">
-              <h3 className="font-bold text-lg mb-4">상품 설명</h3>
-              <p className="text-gray-600 leading-relaxed whitespace-pre-line">
-                {product.description_ko || product.description}
-              </p>
+              <div className="flex border-b border-gray-200 mb-4">
+                {[
+                  { id: 'detail' as const, label: '상세정보' },
+                  { id: 'shipping' as const, label: '배송·교환' },
+                  { id: 'reviews' as const, label: `리뷰 (${reviewCount})` },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setDetailTab(tab.id)}
+                    className={`px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                      detailTab === tab.id
+                        ? 'border-primary-500 text-primary-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+              {detailTab === 'detail' && (
+                <div className="prose prose-sm max-w-none">
+                  <p className="text-gray-600 leading-relaxed whitespace-pre-line">
+                    {product.description_ko || product.description || '상품 설명이 없습니다.'}
+                  </p>
+                </div>
+              )}
+              {detailTab === 'shipping' && (
+                <div className="text-gray-600 space-y-3 text-sm">
+                  <p><strong>배송 안내</strong></p>
+                  <p>· 배송 기간: 주문 후 {product.shipping_days_min}~{product.shipping_days_max}일 소요 (해외 배송 포함)</p>
+                  <p>· 30,000원 이상 구매 시 무료배송</p>
+                  <p>· 교환/반품: 수령일로부터 7일 이내 미개봉 시 가능</p>
+                </div>
+              )}
+              {detailTab === 'reviews' && (
+                <div className="text-center py-8 text-gray-500">
+                  <p>아직 리뷰가 없어요. 첫 리뷰를 남겨보세요!</p>
+                </div>
+              )}
             </div>
 
             {/* 신뢰 배지 */}

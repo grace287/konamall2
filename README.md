@@ -83,14 +83,14 @@ docker compose exec backend alembic upgrade head
 ```
 
 - **프론트**: http://localhost:3000  
-- **API**: http://localhost:8000  
-- **API 문서**: http://localhost:8000/docs  
+- **API**: http://localhost:8080  
+- **API 문서**: http://localhost:8080/docs  
 
 ### 3) 로컬에서 Backend / Frontend 각각 실행
 
 환경 변수 설정 후:
 
-- **Backend**: `cd backend` → `pip install -e ".[dev]"` → `alembic upgrade head` → `uvicorn app.main:app --reload --port 8000`
+- **Backend**: `cd backend` → `pip install -e ".[dev]"` → `alembic upgrade head` → `uvicorn app.main:app --reload --port 8080`
 - **Frontend**: `cd frontend` → `npm ci` → `npm run dev`
 
 자세한 단계·명령어는 **[docs/RUN.md](docs/RUN.md)** 를 참고하세요.
@@ -105,7 +105,7 @@ docker compose exec backend alembic upgrade head
 | `REDIS_URL` | Redis 연결 문자열 | `redis://localhost:6379/0` |
 | `SECRET_KEY` | JWT 서명 키 (32자 이상 권장) | (변경 필요) |
 | `CORS_ORIGINS` | 허용 오리진 (쉼표 구분 또는 JSON 배열) | `http://localhost:3000` |
-| `NEXT_PUBLIC_API_URL` | 프론트에서 쓰는 API 베이스 URL | `http://localhost:8000` |
+| `NEXT_PUBLIC_API_URL` | 프론트에서 쓰는 API 베이스 URL | `http://localhost:8080` |
 
 - **Backend**: `backend/.env.example` → `backend/.env`  
 - **프로덕션**: `.env.production.example` → `.env.production`  

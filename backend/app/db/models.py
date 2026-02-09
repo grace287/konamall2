@@ -173,6 +173,16 @@ class Product(Base):
         """판매가(KRW). 정수 원화."""
         return int(self.selling_price) if self.selling_price else 0
 
+    @property
+    def price_krw(self) -> int:
+        """API/스키마 호환용."""
+        return self.price_final
+
+    @property
+    def price_original(self) -> int:
+        """정가(KRW). 정수 원화."""
+        return int(self.original_price) if self.original_price else 0
+
 
 # --- Product images (001: is_primary) ---
 class ProductImage(Base):

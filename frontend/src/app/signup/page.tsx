@@ -6,9 +6,10 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
-import { 
-  User, Mail, Lock, Eye, EyeOff, UserPlus, 
-  Gift, Check, ChevronRight, Sparkles
+import { AxiosError } from 'axios';
+import {
+  User, Mail, Lock, Eye, EyeOff, UserPlus,
+  Gift, ChevronRight, Sparkles, Phone,
 } from 'lucide-react';
 
 interface SignupForm {
@@ -16,8 +17,27 @@ interface SignupForm {
   email: string;
   password: string;
   passwordConfirm: string;
+  phone?: string;
   agreeTerms: boolean;
   agreeMarketing: boolean;
+}
+
+/** API 에러에서 사용자에게 보여줄 메시지 추출 (FastAPI detail: string | array) */
+function getErrorMessage(error: unknown): string {
+  if (error instanceof AxiosError) {
+    if (!error.response) {
+      return '서버에 연결할 수 없습니다. 백엔드가 실행 중인지, 주소가 맞는지 확인해주세요.';
+    }
+    const d = error.response.data?.detail;
+    if (typeof d === 'string') return d;
+    if (Array.isArray(d) && d.length > 0) {
+      const first = d[0];
+      const msg = typeof first === 'object' && first && 'msg' in first ? first.msg : String(first);
+      return msg;
+    }
+    return error.response.data?.message || '회원가입에 실패했습니다. 다시 시도해주세요.';
+  }
+  return '회원가입에 실패했습니다. 다시 시도해주세요.';
 }
 
 export default function SignupPage() {
@@ -58,39 +78,34 @@ export default function SignupPage() {
       toast.error('필수 약관에 동의해주세요.');
       return;
     }
-    
-    // 비밀번호 확인 검증
     if (data.password !== data.passwordConfirm) {
       toast.error('비밀번호가 일치하지 않습니다.');
       return;
     }
-    
+
+    const name = data.name.trim();
+    const email = data.email.trim().toLowerCase();
+    if (name.length < 2) {
+      toast.error('이름을 2자 이상 입력해주세요.');
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const response = await api.post('/api/users/register', {
-        name: data.name.trim(),
-        email: data.email.trim().toLowerCase(),
+      await api.post('/api/users/register', {
+        name,
+        email,
         password: data.password,
+        phone: data.phone?.trim() || undefined,
       });
-      
-      toast.success('🎉 회원가입 완료! 3,000원 쿠폰이 지급되었습니다.');
-      
-      // 회원가입 성공 후 로그인 페이지로 이동
-      setTimeout(() => {
-        router.push('/login');
-      }, 1500);
-    } catch (error: any) {
-      // 에러 메시지 처리
-      const errorMessage = error.response?.data?.detail || 
-                          error.response?.data?.message || 
-                          '회원가입에 실패했습니다. 다시 시도해주세요.';
-      
+
+      toast.success('🎉 회원가입 완료! 로그인해 주세요.');
+      setTimeout(() => router.push('/login'), 1200);
+    } catch (error) {
+      const errorMessage = getErrorMessage(error);
       toast.error(errorMessage);
-      
-      // 이메일 중복인 경우 이메일 필드 포커스
       if (errorMessage.includes('이메일') || errorMessage.includes('이미 등록')) {
-        const emailInput = document.querySelector('input[type="email"]') as HTMLInputElement;
-        emailInput?.focus();
+        (document.querySelector('input[type="email"]') as HTMLInputElement)?.focus();
       }
     } finally {
       setIsLoading(false);
@@ -148,14 +163,19 @@ export default function SignupPage() {
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               {/* 이름 */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  이름
+                <label htmlFor="signup-name" className="block text-sm font-medium text-gray-700 mb-2">
+                  이름 <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <input
+                    id="signup-name"
                     type="text"
-                    {...register('name', { required: '이름을 입력해주세요' })}
+                    autoComplete="name"
+                    {...register('name', {
+                      required: '이름을 입력해주세요',
+                      minLength: { value: 2, message: '이름은 2자 이상 입력해주세요' },
+                    })}
                     className={`w-full pl-12 pr-4 py-3.5 border-2 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all ${
                       errors.name ? 'border-red-300 bg-red-50' : 'border-gray-200'
                     }`}
@@ -171,13 +191,15 @@ export default function SignupPage() {
 
               {/* 이메일 */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  이메일
+                <label htmlFor="signup-email" className="block text-sm font-medium text-gray-700 mb-2">
+                  이메일 <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <input
+                    id="signup-email"
                     type="email"
+                    autoComplete="email"
                     {...register('email', {
                       required: '이메일을 입력해주세요',
                       pattern: {
@@ -198,15 +220,48 @@ export default function SignupPage() {
                 )}
               </div>
 
+              {/* 전화번호 (선택) */}
+              <div>
+                <label htmlFor="signup-phone" className="block text-sm font-medium text-gray-700 mb-2">
+                  전화번호 <span className="text-gray-400 text-xs">(선택)</span>
+                </label>
+                <div className="relative">
+                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    id="signup-phone"
+                    type="tel"
+                    autoComplete="tel"
+                    {...register('phone', {
+                      pattern: {
+                        value: /^[0-9\-+\s()]*$/,
+                        message: '숫자, 하이픈만 입력해주세요',
+                      },
+                      maxLength: { value: 20, message: '20자 이내로 입력해주세요' },
+                    })}
+                    className={`w-full pl-12 pr-4 py-3.5 border-2 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all ${
+                      errors.phone ? 'border-red-300 bg-red-50' : 'border-gray-200'
+                    }`}
+                    placeholder="010-1234-5678"
+                  />
+                </div>
+                {errors.phone && (
+                  <p className="text-red-500 text-sm mt-1.5 flex items-center gap-1">
+                    <span>⚠️</span> {errors.phone.message}
+                  </p>
+                )}
+              </div>
+
               {/* 비밀번호 */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  비밀번호
+                <label htmlFor="signup-password" className="block text-sm font-medium text-gray-700 mb-2">
+                  비밀번호 <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <input
+                    id="signup-password"
                     type={showPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
                     {...register('password', {
                       required: '비밀번호를 입력해주세요',
                       minLength: {
@@ -259,13 +314,15 @@ export default function SignupPage() {
 
               {/* 비밀번호 확인 */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  비밀번호 확인
+                <label htmlFor="signup-passwordConfirm" className="block text-sm font-medium text-gray-700 mb-2">
+                  비밀번호 확인 <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <input
+                    id="signup-passwordConfirm"
                     type={showPasswordConfirm ? 'text' : 'password'}
+                    autoComplete="new-password"
                     {...register('passwordConfirm', {
                       required: '비밀번호를 다시 입력해주세요',
                       validate: (value) =>

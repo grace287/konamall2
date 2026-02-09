@@ -1,6 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
+  // 프로덕션 빌드에서만 standalone (개발 시 ChunkLoadError 방지)
+  ...(process.env.NODE_ENV === 'production' ? { output: 'standalone' } : {}),
+  // 개발 시 청크 타임아웃 완화
+  webpack: (config, { dev }) => {
+    if (dev) {
+      config.infrastructureLogging = { level: 'warn' };
+    }
+    return config;
+  },
   
   // 이미지 최적화 설정
   images: {

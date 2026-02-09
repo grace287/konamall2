@@ -6,6 +6,7 @@ from enum import Enum
 
 class UserRole(str, Enum):
     USER = "user"
+    CUSTOMER = "customer"  # DB와 동일 (회원가입 기본값)
     ADMIN = "admin"
     SELLER = "seller"
 
@@ -65,10 +66,10 @@ class UserOut(BaseModel):
     email: str
     name: Optional[str]
     phone: Optional[str]
-    role: UserRole = UserRole.USER
+    role: Optional[str] = None  # DB: customer/admin/seller
     is_active: bool
     created_at: Optional[datetime]
-    
+
     class Config:
         from_attributes = True
 
@@ -80,6 +81,7 @@ class UserWithAddresses(UserOut):
 # ========== Token ==========
 class Token(BaseModel):
     access_token: str
+    refresh_token: Optional[str] = None
     token_type: str = "bearer"
     expires_in: int = 1800  # 30 minutes
 

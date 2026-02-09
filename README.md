@@ -1,191 +1,159 @@
-# KonaMall - 글로벌 직구 드롭쉬핑 플랫폼
+# KonaMall
 
-해외 직구 상품(Temu, AliExpress 등)을 한국어로 쉽게 구매할 수 있는 이커머스 플랫폼입니다.
+**글로벌 드롭쉬핑 커머스 플랫폼** — 해외 공급처(Temu, AliExpress 등) 연동, 회원/장바구니/주문/결제(카카오페이·네이버페이), 관리자 대시보드를 갖춘 풀스택 웹 애플리케이션입니다.
 
-## 🛠 기술 스택
+---
 
-### Backend
-- **Framework**: FastAPI (Python 3.12+)
-- **Database**: PostgreSQL 16
-- **Cache/Queue**: Redis + Celery
-- **ORM**: SQLAlchemy 2.0
-- **Migration**: Alembic
-- **Auth**: JWT (python-jose)
+## 주요 기능
 
-### Frontend
-- **Framework**: Next.js 14 (App Router)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **State**: Zustand
-- **Forms**: React Hook Form + Zod
+| 구분 | 기능 |
+|------|------|
+| **회원** | 회원가입, 로그인(JWT), 프로필 조회/수정 |
+| **쇼핑** | 상품 목록/상세, 장바구니, 주문 생성 |
+| **결제** | 결제 준비·승인·상태 조회 (카카오페이/네이버페이) |
+| **관리자** | 대시보드 통계, 회원 목록, 주문 목록 (admin 전용) |
+| **백오피스** | 공급처 연동, 상품 동기화, 주문 처리 (Celery) |
 
-### Infrastructure
-- **Container**: Docker + Docker Compose
-- **Proxy**: Nginx (프로덕션)
-- **SSL/TLS**: Let's Encrypt
+---
 
-## 📁 프로젝트 구조
+## 기술 스택
+
+| 영역 | 기술 |
+|------|------|
+| **Backend** | Python 3.11+, FastAPI, SQLAlchemy 2, Alembic, PostgreSQL, Redis, Celery |
+| **Frontend** | Next.js 14 (App Router), TypeScript, Tailwind CSS, Zustand, React Hook Form, Axios |
+| **인프라** | Docker / Docker Compose, Nginx, GitHub Actions (CI/CD) |
+
+---
+
+## 프로젝트 구조
 
 ```
 konamall2/
-├── backend/
+├── backend/                 # FastAPI 백엔드
 │   ├── app/
-│   │   ├── api/          # API 라우터
-│   │   ├── connectors/   # 외부 공급자 연동
-│   │   ├── core/         # 설정, 보안
-│   │   ├── db/           # 모델, 세션
-│   │   └── schemas/      # Pydantic 스키마
-│   ├── alembic/          # DB 마이그레이션
-│   ├── Dockerfile
+│   │   ├── api/             # 라우터 (users, products, cart, orders, payments, admin)
+│   │   ├── core/            # 설정, 보안, 의존성
+│   │   ├── db/              # 모델, 세션
+│   │   ├── schemas/         # Pydantic 스키마
+│   │   ├── services/        # 결제 게이트웨이 등
+│   │   ├── connectors/      # Temu, AliExpress 등 공급처 연동
+│   │   └── tasks/           # Celery 태스크 (동기화, 주문 처리)
+│   ├── alembic/             # DB 마이그레이션
+│   ├── tests/
 │   └── pyproject.toml
-├── frontend/
+├── frontend/                # Next.js 프론트엔드
 │   ├── src/
-│   │   ├── app/          # Next.js 페이지
-│   │   ├── components/   # React 컴포넌트
-│   │   ├── lib/          # 유틸리티
-│   │   └── store/        # Zustand 스토어
-│   ├── Dockerfile
+│   │   ├── app/             # 페이지 (/, /products, /cart, /login, /signup, /admin)
+│   │   ├── components/      # 레이아웃, 홈, 상품
+│   │   ├── lib/             # API 클라이언트
+│   │   └── store/           # Zustand (auth, cart)
 │   └── package.json
-└── docker-compose.yml
+├── nginx/                   # 리버스 프록시 설정
+├── docs/                    # RUN.md, PROJECT_REVIEW.md 등
+├── docker-compose.yml       # 개발 환경
+├── docker-compose.prod.yml  # 프로덕션
+├── deploy.sh / deploy.bat  # 배포 스크립트
+└── .github/workflows/       # CI/CD
 ```
 
-## 🚀 시작하기
+---
 
-### 개발 환경 (Docker)
+## 요구 사항
+
+- **로컬 실행**: Python 3.11+, Node.js 20+, PostgreSQL 16, Redis 7  
+- **Docker 실행**: Docker, Docker Compose
+
+---
+
+## 빠른 시작
+
+### 1) 저장소 클론
 
 ```bash
-# 프로젝트 폴더로 이동
+git clone <repository-url>
 cd konamall2
-
-# 환경 변수 설정
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env.local
-
-# Docker Compose로 실행
-docker-compose up -d
-
-# 데이터베이스 마이그레이션
-docker-compose exec backend alembic upgrade head
 ```
 
-### 프로덕션 배포
-
-프로덕션 환경 배포는 [DEPLOYMENT.md](DEPLOYMENT.md) 문서를 참고하세요.
+### 2) Docker로 한 번에 실행 (권장)
 
 ```bash
-# 환경 변수 설정
-cp .env.production.example .env.production
-# .env.production 파일 수정
-
-# 배포 스크립트 실행
-./deploy.sh prod    # Linux/Mac
-deploy.bat prod     # Windows
+docker compose up -d --build
+docker compose exec backend alembic upgrade head
 ```
 
-### 1. Docker로 실행 (권장)
+- **프론트**: http://localhost:3000  
+- **API**: http://localhost:8000  
+- **API 문서**: http://localhost:8000/docs  
 
-```bash
-# 프로젝트 폴더로 이동
-cd konamall2
+### 3) 로컬에서 Backend / Frontend 각각 실행
 
-# 환경 변수 설정
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env.local
+환경 변수 설정 후:
 
-# Docker Compose로 실행
-docker-compose up -d
+- **Backend**: `cd backend` → `pip install -e ".[dev]"` → `alembic upgrade head` → `uvicorn app.main:app --reload --port 8000`
+- **Frontend**: `cd frontend` → `npm ci` → `npm run dev`
 
-# 데이터베이스 마이그레이션
-docker-compose exec backend alembic upgrade head
-```
+자세한 단계·명령어는 **[docs/RUN.md](docs/RUN.md)** 를 참고하세요.
 
-### 2. 로컬 개발 환경
+---
 
-#### Backend
-```bash
-cd backend
+## 환경 변수
 
-# 가상환경 생성 및 활성화
-python -m venv venv
-.\venv\Scripts\activate  # Windows
-# source venv/bin/activate  # Linux/Mac
+| 변수 | 설명 | 기본값(개발) |
+|------|------|----------------|
+| `DATABASE_URL` | PostgreSQL 연결 문자열 | `postgresql://postgres:postgres@localhost:5432/konamall` |
+| `REDIS_URL` | Redis 연결 문자열 | `redis://localhost:6379/0` |
+| `SECRET_KEY` | JWT 서명 키 (32자 이상 권장) | (변경 필요) |
+| `CORS_ORIGINS` | 허용 오리진 (쉼표 구분 또는 JSON 배열) | `http://localhost:3000` |
+| `NEXT_PUBLIC_API_URL` | 프론트에서 쓰는 API 베이스 URL | `http://localhost:8000` |
 
-# 의존성 설치
-pip install -e .
+- **Backend**: `backend/.env.example` → `backend/.env`  
+- **프로덕션**: `.env.production.example` → `.env.production`  
 
-# 환경 변수 설정
-cp .env.example .env
+---
 
-# 데이터베이스 마이그레이션
-alembic upgrade head
+## 문서
 
-# 서버 실행
-uvicorn app.main:app --reload
-```
+| 문서 | 내용 |
+|------|------|
+| [docs/RUN.md](docs/RUN.md) | 실행 단계 (로컬, Docker, 배포 스크립트, 문제 해결) |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | 프로덕션 배포, SSL, 도메인 |
+| [QUICKSTART.md](QUICKSTART.md) | Ubuntu 서버 기준 빠른 배포 |
+| [docs/PROJECT_REVIEW.md](docs/PROJECT_REVIEW.md) | 로직 검토·개선 요약, 권장 후속 작업 |
+| [docs/OPERATION_READINESS.md](docs/OPERATION_READINESS.md) | **운영 가능성 분석**, 치명적/중요 개선점, 체크리스트, 로드맵 |
 
-#### Frontend
-```bash
-cd frontend
+---
 
-# 의존성 설치
-npm install
+## 스크립트
 
-# 환경 변수 설정
-cp .env.example .env.local
+| 위치 | 명령어 | 설명 |
+|------|--------|------|
+| Backend | `pytest tests/ -v` | 테스트 |
+| Backend | `alembic upgrade head` | DB 마이그레이션 적용 |
+| Frontend | `npm run dev` | 개발 서버 |
+| Frontend | `npm run build` | 프로덕션 빌드 |
+| Frontend | `npm run lint` | ESLint |
+| 루트 | `./deploy.sh dev` / `./deploy.sh prod` | Docker 배포 (Linux/Mac) |
+| 루트 | `deploy.bat dev` / `deploy.bat prod` | Docker 배포 (Windows) |
 
-# 개발 서버 실행
-npm run dev
-```
+---
 
-## 🌐 접속 URL
+## 관리자
 
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **API Docs**: http://localhost:8000/docs
+- **URL**: `/admin` (대시보드, 회원 목록, 주문 목록)
+- **접근**: 로그인한 사용자 중 **role이 `admin`** 인 경우만 접근 가능
+- **슈퍼관리자·테스트 계정**: `backend`에서 `python -m scripts.seed_users` 실행 시  
+  `admin@konamall.local`(admin), `test@konamall.local`(일반) 계정 생성. 자세한 방법은 [docs/RUN.md](docs/RUN.md) 참고.
 
-## 📝 주요 기능
+---
 
-### 상품 관리
-- 외부 공급자(Temu, AliExpress) 상품 동기화
-- 자동 한글 번역 및 원화 가격 변환
-- 상품 검색 및 필터링
+## CI/CD
 
-### 주문/결제
-- 장바구니 기능
-- 다양한 결제 수단 지원
-- 실시간 주문 상태 추적
+- **push/PR** (main, develop): Backend 테스트(Postgres/Redis), Frontend lint·build
+- **push to main**: Docker 이미지 빌드·푸시(GHCR), 선택적 SSH 배포 (Secrets 설정 시)
 
-### 사용자
-- JWT 기반 인증
-- 소셜 로그인 (카카오, 구글)
-- 주문 내역 조회
+---
 
-### 공급자 연동
-- Connector 패턴을 통한 확장 가능한 구조
-- 자동 재고 동기화
-- 주문 자동 전달
+## 라이선스
 
-## 🔧 환경 변수
-
-### Backend (.env)
-```env
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/konamall
-REDIS_URL=redis://localhost:6379/0
-SECRET_KEY=your-secret-key
-CORS_ORIGINS=["http://localhost:3000"]
-```
-
-### Frontend (.env.local)
-```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
-
-## 📜 문서
-
-- 📘 [배포 가이드](DEPLOYMENT.md) - 프로덕션 환경 배포
-- 📗 [API 문서](http://localhost:8000/docs) - FastAPI 자동 생성 문서
-- 📕 [외부 주문 처리](docs/place_external_orders_README.md)
-
-## 📜 라이선스
-
-MIT License
+프로젝트 정책에 따릅니다.

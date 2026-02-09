@@ -234,7 +234,7 @@ class RoleChecker:
 # 권한 체커 인스턴스
 require_admin = RoleChecker([UserRole.ADMIN])
 require_seller = RoleChecker([UserRole.SELLER, UserRole.ADMIN])
-require_user = RoleChecker([UserRole.USER, UserRole.SELLER, UserRole.ADMIN])
+require_user = RoleChecker([UserRole.CUSTOMER, UserRole.SELLER, UserRole.ADMIN])
 
 
 class APIKeyAuth:

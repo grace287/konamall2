@@ -10,7 +10,7 @@ import logging
 
 from app.celery_app import celery_app
 from app.db.session import SessionLocal
-from app.db.models import Supplier, Product, ProductImage, ProductVariant, SupplierType
+from app.db.models import Supplier, Product, ProductImage, ProductVariant
 from app.connectors import get_connector
 
 logger = logging.getLogger(__name__)
@@ -79,43 +79,39 @@ def sync_supplier_products(self, supplier_id: int) -> dict:
                 price_krw = int(price_usd * exchange_rate * (1 + margin_percent / 100))
                 
                 if existing:
-                    # 업데이트
-                    existing.title = product_data.get("title", existing.title)
-                    existing.title_ko = product_data.get("title_ko", existing.title_ko)
+                    existing.name = product_data.get("title", product_data.get("name", existing.name))
+                    existing.name_ko = product_data.get("title_ko", product_data.get("name_ko", existing.name_ko))
                     existing.description = product_data.get("description", existing.description)
                     existing.description_ko = product_data.get("description_ko", existing.description_ko)
-                    existing.price_original = price_usd
-                    existing.price_final = price_krw
+                    existing.original_price = price_usd
+                    existing.selling_price = price_krw
                     existing.stock = product_data.get("stock", 0)
-                    existing.last_synced_at = datetime.utcnow()
+                    existing.synced_at = datetime.utcnow()
                     result["updated"] += 1
                 else:
-                    # 신규 생성
                     new_product = Product(
                         supplier_id=supplier_id,
                         external_id=external_id,
-                        title=product_data.get("title", "Unknown"),
-                        title_ko=product_data.get("title_ko"),
+                        name=product_data.get("title", product_data.get("name", "Unknown")),
+                        name_ko=product_data.get("title_ko", product_data.get("name_ko")),
                         description=product_data.get("description"),
                         description_ko=product_data.get("description_ko"),
-                        price_original=price_usd,
-                        price_final=price_krw,
-                        currency="USD",
+                        original_price=price_usd,
+                        selling_price=price_krw,
+                        currency="KRW",
                         stock=product_data.get("stock", 0),
                         category=product_data.get("category"),
-                        origin_url=product_data.get("url"),
-                        last_synced_at=datetime.utcnow()
+                        external_url=product_data.get("url"),
+                        synced_at=datetime.utcnow()
                     )
                     db.add(new_product)
-                    db.flush()  # ID 생성
-                    
-                    # 이미지 추가
+                    db.flush()
                     images = product_data.get("images", [])
                     for i, img_url in enumerate(images):
                         img = ProductImage(
                             product_id=new_product.id,
                             url=img_url,
-                            is_main=(i == 0),
+                            is_primary=(i == 0),
                             sort_order=i
                         )
                         db.add(img)
@@ -128,8 +124,7 @@ def sync_supplier_products(self, supplier_id: int) -> dict:
                             external_variant_id=str(var_data.get("id", "")),
                             name=var_data.get("name"),
                             sku=var_data.get("sku"),
-                            price_usd=var_data.get("price"),
-                            price_krw=int(var_data.get("price", 0) * exchange_rate * (1 + margin_percent / 100)),
+                            price_krw=int(float(var_data.get("price", 0)) * exchange_rate * (1 + margin_percent / 100)),
                             stock=var_data.get("stock", 0)
                         )
                         db.add(variant)
@@ -192,10 +187,8 @@ def translate_product(product_id: int) -> dict:
         
         # TODO: 실제 번역 API 연동 (Google Translate, DeepL 등)
         # 현재는 placeholder
-        if not product.title_ko and product.title:
-            # 임시: 영문 제목 그대로 사용
-            product.title_ko = product.title
-        
+        if not product.name_ko and product.name:
+            product.name_ko = product.name
         if not product.description_ko and product.description:
             product.description_ko = product.description
         

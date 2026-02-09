@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from app.db.session import get_db
-from app.db.models import Cart, CartItem, Product, ProductVariant, User
+from app.db.models import Cart, CartItem, Product, User
 from app.schemas.order import CartItemAdd, CartItemUpdate, CartResponse, CartItemResponse
 from app.core.deps import get_current_user
 
@@ -29,6 +29,12 @@ def get_or_create_cart(db: Session, user: User) -> Cart:
     return cart
 
 
+def _variant_id_from_item(item: CartItem):
+    """CartItem의 variant_info에서 variant_id 추출 (001 스키마 호환)."""
+    if not getattr(item, "variant_info", None):
+        return None
+    return (item.variant_info or {}).get("variant_id")
+
 def calculate_cart_totals(cart: Cart) -> dict:
     """장바구니 합계 계산"""
     subtotal = 0
@@ -36,23 +42,23 @@ def calculate_cart_totals(cart: Cart) -> dict:
     
     for item in cart.items:
         product = item.product
-        variant = item.variant
-        
-        # 가격 결정 (variant가 있으면 variant 가격, 없으면 product 가격)
-        price = variant.price_krw if variant and variant.price_krw else product.price_final
+        # 가격: variant_info에 가격이 있으면 사용, 없으면 상품 판매가
+        price = product.price_final
+        if getattr(item, "variant_info", None) and isinstance(item.variant_info, dict):
+            price = item.variant_info.get("price_krw") or price
         line_total = price * item.quantity
         subtotal += line_total
         
         # 메인 이미지 찾기
         main_image = None
         if product.images:
-            main_img = next((img for img in product.images if img.is_main), None)
+            main_img = next((img for img in product.images if getattr(img, "is_main", getattr(img, "is_primary", False))), None)
             main_image = main_img.url if main_img else (product.images[0].url if product.images else None)
         
         items_response.append(CartItemResponse(
             id=item.id,
             product_id=item.product_id,
-            variant_id=item.variant_id,
+            variant_id=_variant_id_from_item(item),
             quantity=item.quantity,
             product_title=product.title_ko or product.title,
             product_image=main_image,
@@ -102,49 +108,31 @@ async def add_cart_item(
             detail="상품을 찾을 수 없습니다"
         )
     
-    # variant 확인 (있는 경우)
-    if item.variant_id:
-        variant = db.query(ProductVariant).filter(
-            ProductVariant.id == item.variant_id,
-            ProductVariant.product_id == item.product_id
-        ).first()
-        if not variant:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="상품 옵션을 찾을 수 없습니다"
-            )
-        # 재고 확인
-        if variant.stock < item.quantity:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"재고가 부족합니다 (남은 수량: {variant.stock})"
-            )
-    else:
-        # 상품 자체 재고 확인
-        if product.stock < item.quantity:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"재고가 부족합니다 (남은 수량: {product.stock})"
-            )
+    # 재고 확인 (001 스키마: variant 없으면 상품 재고만 사용)
+    if product.stock < item.quantity:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"재고가 부족합니다 (남은 수량: {product.stock})"
+        )
     
     cart = get_or_create_cart(db, current_user)
     
-    # 이미 같은 상품(+옵션)이 있는지 확인
+    # 001: (cart_id, product_id) 유일 — 같은 상품이면 수량만 추가
+    variant_info = {"variant_id": item.variant_id} if item.variant_id else None
     existing_item = db.query(CartItem).filter(
         CartItem.cart_id == cart.id,
-        CartItem.product_id == item.product_id,
-        CartItem.variant_id == item.variant_id
+        CartItem.product_id == item.product_id
     ).first()
     
     if existing_item:
-        # 수량 추가
         existing_item.quantity += item.quantity
+        if variant_info:
+            existing_item.variant_info = variant_info
     else:
-        # 새 아이템 추가
         cart_item = CartItem(
             cart_id=cart.id,
             product_id=item.product_id,
-            variant_id=item.variant_id,
+            variant_info=variant_info,
             quantity=item.quantity
         )
         db.add(cart_item)
@@ -177,22 +165,12 @@ async def update_cart_item(
         )
     
     # 재고 확인
-    if cart_item.variant_id:
-        variant = db.query(ProductVariant).filter(
-            ProductVariant.id == cart_item.variant_id
-        ).first()
-        if variant and variant.stock < update.quantity:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"재고가 부족합니다 (남은 수량: {variant.stock})"
-            )
-    else:
-        product = cart_item.product
-        if product.stock < update.quantity:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"재고가 부족합니다 (남은 수량: {product.stock})"
-            )
+    product = cart_item.product
+    if product.stock < update.quantity:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"재고가 부족합니다 (남은 수량: {product.stock})"
+        )
     
     cart_item.quantity = update.quantity
     db.commit()

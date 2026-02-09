@@ -1,18 +1,30 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, Float, BigInteger, DateTime, ForeignKey, JSON, Enum, Index
+"""
+SQLAlchemy models - KonaMall
+마이그레이션 001_initial_schema와 동기화. ProductVariant/cart_items.variant_id 등은 002에서 추가.
+"""
+from datetime import datetime
+from decimal import Decimal
+from enum import Enum as PyEnum
+from typing import Optional, List, Any
+
+from sqlalchemy import (
+    Column, Integer, String, Text, Boolean, Numeric, DateTime, ForeignKey,
+    UniqueConstraint, Index, JSON, Enum as SQLEnum,
+)
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+
 from app.db.session import Base
-import enum
 
 
-# ========== Enums ==========
-class UserRole(str, enum.Enum):
-    USER = "user"
-    ADMIN = "admin"
+# --- Enums (DB enum 이름과 일치) ---
+class UserRole(str, PyEnum):
+    CUSTOMER = "customer"
     SELLER = "seller"
+    ADMIN = "admin"
 
 
-class OrderStatus(str, enum.Enum):
+class OrderStatus(str, PyEnum):
     PENDING = "pending"
     PAID = "paid"
     PROCESSING = "processing"
@@ -22,23 +34,15 @@ class OrderStatus(str, enum.Enum):
     REFUNDED = "refunded"
 
 
-class PaymentStatus(str, enum.Enum):
-    PENDING = "pending"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    REFUNDED = "refunded"
-
-
-class ExternalOrderStatus(str, enum.Enum):
+class ExternalOrderStatus(str, PyEnum):
     PENDING = "pending"
     ORDERED = "ordered"
     SHIPPED = "shipped"
     DELIVERED = "delivered"
     FAILED = "failed"
-    CANCELLED = "cancelled"
 
 
-class ShipmentStatus(str, enum.Enum):
+class ShipmentStatus(str, PyEnum):
     PENDING = "pending"
     PICKED_UP = "picked_up"
     IN_TRANSIT = "in_transit"
@@ -47,305 +51,331 @@ class ShipmentStatus(str, enum.Enum):
     EXCEPTION = "exception"
 
 
-class SupplierType(str, enum.Enum):
-    TEMU = "temu"
-    ALIEXPRESS = "aliexpress"
-    AMAZON = "amazon"
-    LOCAL = "local"
+class PaymentStatus(str, PyEnum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    REFUNDED = "refunded"
 
 
-# ========== User ==========
-class User(Base):
-    __tablename__ = "users"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(255), unique=True, index=True, nullable=False)
-    hashed_password = Column(String(255), nullable=False)
-    name = Column(String(100), nullable=False)
-    phone = Column(String(20))
-    role = Column(Enum(UserRole), default=UserRole.USER, nullable=False)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
-    # Relationships
-    orders = relationship("Order", back_populates="user")
-    addresses = relationship("Address", back_populates="user", cascade="all, delete-orphan")
-    cart = relationship("Cart", back_populates="user", uselist=False, cascade="all, delete-orphan")
-
-
-class Address(Base):
-    __tablename__ = "addresses"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    recipient_name = Column(String(100), nullable=False)
-    phone = Column(String(20), nullable=False)
-    zip_code = Column(String(10), nullable=False)
-    address1 = Column(String(255), nullable=False)
-    address2 = Column(String(255))
-    is_default = Column(Boolean, default=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-    # Relationships
-    user = relationship("User", back_populates="addresses")
-
-
-# ========== Cart ==========
-class Cart(Base):
-    __tablename__ = "carts"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
-    # Relationships
-    user = relationship("User", back_populates="cart")
-    items = relationship("CartItem", back_populates="cart", cascade="all, delete-orphan")
-
-
-class CartItem(Base):
-    __tablename__ = "cart_items"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    cart_id = Column(Integer, ForeignKey("carts.id", ondelete="CASCADE"), nullable=False, index=True)
-    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
-    variant_id = Column(Integer, ForeignKey("product_variants.id", ondelete="SET NULL"), nullable=True)
-    quantity = Column(Integer, default=1, nullable=False)
-    added_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-    # Relationships
-    cart = relationship("Cart", back_populates="items")
-    product = relationship("Product")
-    variant = relationship("ProductVariant")
-
-
-# ========== Supplier ==========
+# --- Suppliers ---
 class Supplier(Base):
     __tablename__ = "suppliers"
-    
-    id = Column(Integer, primary_key=True, index=True)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(100), nullable=False)
-    supplier_type = Column(Enum(SupplierType), nullable=False)
-    base_url = Column(String(500))
-    api_key = Column(String(500))  # Encrypted
-    api_secret = Column(String(500))  # Encrypted
+    code = Column(String(50), nullable=False, unique=True)
+    connector_type = Column(String(50), nullable=False)  # temu, aliexpress 등
+    api_key = Column(Text, nullable=True)
+    api_secret = Column(Text, nullable=True)
+    config = Column(JSON, nullable=True)
     is_active = Column(Boolean, default=True)
-    config = Column(JSON, default={})
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-    # Relationships
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
     products = relationship("Product", back_populates="supplier")
     external_orders = relationship("ExternalOrder", back_populates="supplier")
 
+    @property
+    def supplier_type(self):
+        """connector_type을 enum처럼 사용하기 위한 호환 속성."""
+        return type("SupplierType", (), {"value": self.connector_type})()
 
-# ========== Product ==========
+
+# --- Users ---
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(255), nullable=False, unique=True, index=True)
+    hashed_password = Column(String(255), nullable=False)
+    name = Column(String(100), nullable=True)
+    phone = Column(String(20), nullable=True)
+    role = Column(
+        SQLEnum(UserRole, values_callable=lambda obj: [e.value for e in obj]),
+        default=UserRole.CUSTOMER,
+        index=True,
+    )
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    addresses = relationship("Address", back_populates="user", cascade="all, delete-orphan")
+    carts = relationship("Cart", back_populates="user", cascade="all, delete-orphan")
+    orders = relationship("Order", back_populates="user")
+
+
+# --- Addresses ---
+class Address(Base):
+    __tablename__ = "addresses"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    label = Column(String(50), nullable=True)
+    recipient_name = Column(String(100), nullable=False)
+    phone = Column(String(20), nullable=True)
+    postal_code = Column(String(20), nullable=False)
+    address_line1 = Column(String(255), nullable=False)
+    address_line2 = Column(String(255), nullable=True)
+    city = Column(String(100), nullable=True)
+    state = Column(String(100), nullable=True)
+    country = Column(String(50), nullable=False, server_default="KR")
+    is_default = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user = relationship("User", back_populates="addresses")
+
+
+# --- Products ---
 class Product(Base):
     __tablename__ = "products"
-    __table_args__ = (
-        Index('idx_products_supplier', 'supplier_id'),
-        Index('idx_products_external', 'external_id'),
-        Index('idx_products_price', 'price_final'),
-        Index('idx_products_active', 'is_active', postgresql_where='is_active = true'),
-    )
-    
-    id = Column(Integer, primary_key=True, index=True)
-    supplier_id = Column(Integer, ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=False)
-    external_id = Column(String(100), index=True, nullable=False)
-    
-    title = Column(String(500), nullable=False)
-    title_ko = Column(String(500))
-    description = Column(Text)
-    description_ko = Column(Text)
-    
-    price_original = Column(Float, nullable=False)  # USD
-    price_final = Column(BigInteger, nullable=False)  # KRW (with margin)
-    currency = Column(String(3), default="USD")
-    
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=False, index=True)
+    external_id = Column(String(255), nullable=False)
+    sku = Column(String(100), nullable=True)
+    name = Column(String(500), nullable=False)
+    name_ko = Column(String(500), nullable=True)
+    description = Column(Text, nullable=True)
+    description_ko = Column(Text, nullable=True)
+    category = Column(String(100), nullable=True, index=True)
+    brand = Column(String(100), nullable=True)
+    original_price = Column(Numeric(12, 2), nullable=False)
+    selling_price = Column(Numeric(12, 2), nullable=False)
+    currency = Column(String(3), default="KRW")
     stock = Column(Integer, default=0)
-    is_active = Column(Boolean, default=True)
-    
-    category = Column(String(100))
-    tags = Column(JSON, default=[])
-    
-    origin_url = Column(String(1000))
-    shipping_days_min = Column(Integer, default=7)
-    shipping_days_max = Column(Integer, default=21)
-    
-    last_synced_at = Column(DateTime(timezone=True))
+    weight = Column(Numeric(8, 2), nullable=True)
+    external_url = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True, index=True)
+    synced_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
-    # Relationships
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
     supplier = relationship("Supplier", back_populates="products")
-    variants = relationship("ProductVariant", back_populates="product", cascade="all, delete-orphan")
-    images = relationship("ProductImage", back_populates="product", cascade="all, delete-orphan")
+    images = relationship("ProductImage", back_populates="product", cascade="all, delete-orphan", order_by="ProductImage.sort_order")
+    cart_items = relationship("CartItem", back_populates="product")
+    order_items = relationship("OrderItem", back_populates="product")
+
+    __table_args__ = (UniqueConstraint("supplier_id", "external_id", name="uq_supplier_external_id"),)
+    Index("ix_products_external_id", "external_id")
+
+    @property
+    def title(self) -> str:
+        return self.name
+
+    @property
+    def title_ko(self) -> Optional[str]:
+        return self.name_ko
+
+    @property
+    def price_final(self) -> int:
+        """판매가(KRW). 정수 원화."""
+        return int(self.selling_price) if self.selling_price else 0
 
 
+# --- Product images (001: is_primary) ---
+class ProductImage(Base):
+    __tablename__ = "product_images"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
+    url = Column(Text, nullable=False)
+    sort_order = Column(Integer, default=0)
+    is_primary = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    product = relationship("Product", back_populates="images")
+
+    @property
+    def is_main(self) -> bool:
+        return bool(self.is_primary)
+
+
+# --- Product variants (002 마이그레이션에서 테이블 생성) ---
 class ProductVariant(Base):
     __tablename__ = "product_variants"
-    
-    id = Column(Integer, primary_key=True, index=True)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
     product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
-    external_variant_id = Column(String(100))
-    
-    sku = Column(String(100))
-    name = Column(String(200))
-    price_usd = Column(Float)
-    price_krw = Column(BigInteger)
+    external_variant_id = Column(String(255), nullable=True)
+    name = Column(String(255), nullable=True)
+    sku = Column(String(100), nullable=True)
+    price_krw = Column(Numeric(12, 0), nullable=True)
     stock = Column(Integer, default=0)
-    
-    # Relationships
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
     product = relationship("Product", back_populates="variants")
 
 
-class ProductImage(Base):
-    __tablename__ = "product_images"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
-    url = Column(String(1000), nullable=False)
-    is_main = Column(Boolean, default=False)
-    sort_order = Column(Integer, default=0)
-    
-    # Relationships
-    product = relationship("Product", back_populates="images")
+Product.variants = relationship("ProductVariant", back_populates="product", cascade="all, delete-orphan", lazy="dynamic")
 
 
-# ========== Order ==========
+# --- Carts ---
+class Cart(Base):
+    __tablename__ = "carts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user = relationship("User", back_populates="carts")
+    items = relationship("CartItem", back_populates="cart", cascade="all, delete-orphan")
+
+
+# --- Cart items (001: variant_info만; 002에서 variant_id 컬럼 추가 권장) ---
+class CartItem(Base):
+    __tablename__ = "cart_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    cart_id = Column(Integer, ForeignKey("carts.id", ondelete="CASCADE"), nullable=False, index=True)
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    quantity = Column(Integer, nullable=False, default=1)
+    variant_info = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    cart = relationship("Cart", back_populates="items")
+    product = relationship("Product", back_populates="cart_items")
+    variant_id = Column(Integer, ForeignKey("product_variants.id", ondelete="SET NULL"), nullable=True, index=True)
+    variant = relationship("ProductVariant", foreign_keys=[variant_id])
+
+    __table_args__ = (UniqueConstraint("cart_id", "product_id", name="uq_cart_product"),)
+
+
+# --- Orders ---
 class Order(Base):
     __tablename__ = "orders"
-    __table_args__ = (
-        Index('idx_orders_user', 'user_id'),
-        Index('idx_orders_status', 'status'),
-        Index('idx_orders_created', 'created_at'),
-    )
-    
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
-    order_number = Column(String(50), unique=True, index=True, nullable=False)
-    
-    status = Column(Enum(OrderStatus), default=OrderStatus.PENDING, nullable=False)
-    payment_status = Column(Enum(PaymentStatus), default=PaymentStatus.PENDING, nullable=False)
-    
-    subtotal_krw = Column(BigInteger, default=0, nullable=False)
-    shipping_cost_krw = Column(BigInteger, default=0, nullable=False)
-    tax_krw = Column(BigInteger, default=0)
-    total_amount = Column(BigInteger, default=0, nullable=False)
-    
-    # Shipping info (snapshot at order time)
-    shipping_name = Column(String(100), nullable=False)
-    shipping_phone = Column(String(20), nullable=False)
-    shipping_zip_code = Column(String(10), nullable=False)
-    shipping_address1 = Column(String(255), nullable=False)
-    shipping_address2 = Column(String(255))
-    
-    payment_method = Column(String(50))
-    payment_id = Column(String(100))
-    paid_at = Column(DateTime(timezone=True))
-    
-    note = Column(Text)
-    admin_note = Column(Text)
-    
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
-    # Relationships
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=False, index=True)
+    order_number = Column(String(50), nullable=False, unique=True, index=True)
+    status = Column(SQLEnum(OrderStatus), default=OrderStatus.PENDING, index=True)
+    total_amount = Column(Numeric(12, 2), nullable=False)
+    shipping_fee = Column(Numeric(10, 2), default=0)
+    discount_amount = Column(Numeric(10, 2), default=0)
+    currency = Column(String(3), default="KRW")
+    shipping_address_id = Column(Integer, ForeignKey("addresses.id", ondelete="SET NULL"), nullable=True)
+    recipient_name = Column(String(100), nullable=True)
+    recipient_phone = Column(String(20), nullable=True)
+    recipient_address = Column(Text, nullable=True)
+    recipient_postal_code = Column(String(20), nullable=True)
+    payment_method = Column(String(50), nullable=True)
+    payment_id = Column(String(255), nullable=True)
+    paid_at = Column(DateTime(timezone=True), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
     user = relationship("User", back_populates="orders")
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
-    external_orders = relationship("ExternalOrder", back_populates="order", cascade="all, delete-orphan")
+    external_orders = relationship("ExternalOrder", back_populates="order")
+    shipments = relationship("Shipment", back_populates="order")
+
+    # 코드 호환용 별칭 (001 스키마: recipient_* 단일 주소)
+    @property
+    def shipping_name(self) -> Optional[str]:
+        return self.recipient_name
+
+    @property
+    def shipping_phone(self) -> Optional[str]:
+        return self.recipient_phone
+
+    @property
+    def shipping_zip_code(self) -> Optional[str]:
+        return self.recipient_postal_code
+
+    @property
+    def shipping_address1(self) -> Optional[str]:
+        return self.recipient_address
+
+    @property
+    def shipping_address2(self) -> Optional[str]:
+        return None
 
 
+# --- Order items ---
 class OrderItem(Base):
     __tablename__ = "order_items"
-    
-    id = Column(Integer, primary_key=True, index=True)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
     order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True)
-    product_id = Column(Integer, ForeignKey("products.id", ondelete="SET NULL"), nullable=True, index=True)
-    variant_id = Column(Integer, ForeignKey("product_variants.id", ondelete="SET NULL"), nullable=True)
-    
-    # Snapshot at order time (in case product is deleted/changed)
-    product_title = Column(String(500), nullable=False)
-    variant_name = Column(String(200))
-    quantity = Column(Integer, default=1, nullable=False)
-    unit_price = Column(BigInteger, nullable=False)  # KRW per item
-    
-    # Relationships
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="SET NULL"), nullable=True)
+    product_name = Column(String(500), nullable=False)
+    product_sku = Column(String(100), nullable=True)
+    quantity = Column(Integer, nullable=False)
+    unit_price = Column(Numeric(12, 2), nullable=False)
+    total_price = Column(Numeric(12, 2), nullable=False)
+    variant_info = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
     order = relationship("Order", back_populates="items")
-    product = relationship("Product")
-    variant = relationship("ProductVariant")
+    product = relationship("Product", back_populates="order_items")
+    variant_id = Column(Integer, ForeignKey("product_variants.id", ondelete="SET NULL"), nullable=True)
+    variant = relationship("ProductVariant", foreign_keys=[variant_id])
+    external_orders = relationship("ExternalOrder", back_populates="order_item")
 
 
-# ========== External Order (공급자 발주) ==========
+# --- External orders (001: order_item_id; 002에서 order_id 추가) ---
 class ExternalOrder(Base):
     __tablename__ = "external_orders"
-    __table_args__ = (
-        Index('idx_external_orders_status', 'status'),
-    )
-    
-    id = Column(Integer, primary_key=True, index=True)
-    order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True)
-    supplier_id = Column(Integer, ForeignKey("suppliers.id", ondelete="SET NULL"), nullable=True, index=True)
-    
-    external_order_id = Column(String(100))  # ID from supplier
-    status = Column(Enum(ExternalOrderStatus), default=ExternalOrderStatus.PENDING, nullable=False)
-    
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    order_item_id = Column(Integer, ForeignKey("order_items.id", ondelete="CASCADE"), nullable=False, index=True)
+    order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=True, index=True)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=False)
+    external_order_id = Column(String(255), nullable=True, index=True)
+    status = Column(String(50), default="pending")
+    raw_response = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
     attempts = Column(Integer, default=0)
-    last_attempt_at = Column(DateTime(timezone=True))
-    error_message = Column(Text)
-    raw_response = Column(JSON)
-    
+    placed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
-    # Relationships
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    order_item = relationship("OrderItem", back_populates="external_orders")
     order = relationship("Order", back_populates="external_orders")
     supplier = relationship("Supplier", back_populates="external_orders")
-    shipments = relationship("Shipment", back_populates="external_order", cascade="all, delete-orphan")
+    shipments = relationship("Shipment", back_populates="external_order")
 
 
-# ========== Shipment (배송) ==========
+# --- Shipments ---
 class Shipment(Base):
     __tablename__ = "shipments"
-    __table_args__ = (
-        Index('idx_shipments_tracking', 'tracking_number'),
-    )
-    
-    id = Column(Integer, primary_key=True, index=True)
-    external_order_id = Column(Integer, ForeignKey("external_orders.id", ondelete="CASCADE"), nullable=False, index=True)
-    
-    tracking_number = Column(String(100), index=True)
-    courier = Column(String(100))
-    courier_url = Column(String(500))
-    
-    status = Column(Enum(ShipmentStatus), default=ShipmentStatus.PENDING, nullable=False)
-    shipped_at = Column(DateTime(timezone=True))
-    delivered_at = Column(DateTime(timezone=True))
-    
-    last_checked_at = Column(DateTime(timezone=True))
-    
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True)
+    external_order_id = Column(Integer, ForeignKey("external_orders.id", ondelete="SET NULL"), nullable=True)
+    tracking_number = Column(String(100), nullable=True, index=True)
+    courier = Column(String(100), nullable=True)
+    courier_url = Column(Text, nullable=True)
+    status = Column(String(50), default="pending")
+    shipped_at = Column(DateTime(timezone=True), nullable=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
-    # Relationships
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    order = relationship("Order", back_populates="shipments")
     external_order = relationship("ExternalOrder", back_populates="shipments")
     events = relationship("ShipmentEvent", back_populates="shipment", cascade="all, delete-orphan")
 
 
-# ========== ShipmentEvent (배송 이력) ==========
+# --- Shipment events (001: event_time) ---
 class ShipmentEvent(Base):
     __tablename__ = "shipment_events"
-    
-    id = Column(Integer, primary_key=True, index=True)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
     shipment_id = Column(Integer, ForeignKey("shipments.id", ondelete="CASCADE"), nullable=False, index=True)
-    
-    status = Column(String(100), nullable=False)
-    description = Column(Text)
-    location = Column(String(255))
-    occurred_at = Column(DateTime(timezone=True), nullable=False)
-    
+    status = Column(String(50), nullable=False)
+    description = Column(Text, nullable=True)
+    location = Column(String(255), nullable=True)
+    event_time = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-    # Relationships
+
     shipment = relationship("Shipment", back_populates="events")
+
+    @property
+    def occurred_at(self) -> Optional[datetime]:
+        return self.event_time

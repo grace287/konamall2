@@ -59,17 +59,39 @@ export default function SignupPage() {
       return;
     }
     
+    // 비밀번호 확인 검증
+    if (data.password !== data.passwordConfirm) {
+      toast.error('비밀번호가 일치하지 않습니다.');
+      return;
+    }
+    
     setIsLoading(true);
     try {
-      await api.post('/api/users/register', {
-        name: data.name,
-        email: data.email,
+      const response = await api.post('/api/users/register', {
+        name: data.name.trim(),
+        email: data.email.trim().toLowerCase(),
         password: data.password,
       });
+      
       toast.success('🎉 회원가입 완료! 3,000원 쿠폰이 지급되었습니다.');
-      router.push('/login');
-    } catch (error) {
-      toast.error('회원가입에 실패했습니다. 다시 시도해주세요.');
+      
+      // 회원가입 성공 후 로그인 페이지로 이동
+      setTimeout(() => {
+        router.push('/login');
+      }, 1500);
+    } catch (error: any) {
+      // 에러 메시지 처리
+      const errorMessage = error.response?.data?.detail || 
+                          error.response?.data?.message || 
+                          '회원가입에 실패했습니다. 다시 시도해주세요.';
+      
+      toast.error(errorMessage);
+      
+      // 이메일 중복인 경우 이메일 필드 포커스
+      if (errorMessage.includes('이메일') || errorMessage.includes('이미 등록')) {
+        const emailInput = document.querySelector('input[type="email"]') as HTMLInputElement;
+        emailInput?.focus();
+      }
     } finally {
       setIsLoading(false);
     }

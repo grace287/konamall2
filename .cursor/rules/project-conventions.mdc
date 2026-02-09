@@ -1,0 +1,24 @@
+---
+description: KonaMall 프로젝트 공통 규칙 및 컨벤션
+alwaysApply: true
+---
+
+# KonaMall 프로젝트 규칙
+
+## 프로젝트 구조
+- **backend**: FastAPI (Python 3.11+), PostgreSQL, Redis, Celery
+- **frontend**: Next.js 14 (App Router), TypeScript, Tailwind CSS
+- API 경로: `/api` prefix, 인증은 Bearer JWT
+
+## 코드 스타일
+- 백엔드: 한글 주석/문서화 허용, API 응답 메시지는 한글 가능
+- 프론트엔드: 컴포넌트/함수명은 영문, 사용자 노출 텍스트는 한글
+- 새 API 추가 시 `docs/openapi.yaml` 또는 FastAPI docstring으로 스펙 유지
+
+## 보안
+- 비밀번호/시크릿은 환경 변수 또는 `.env`로만 관리, 코드에 하드코딩 금지
+- 사용자 입력은 서버에서 검증(길이, 형식, 권한) 필수
+
+## DB/마이그레이션
+- 스키마 변경 시 Alembic 마이그레이션 추가 (`backend/alembic/versions/`)
+- 모델은 `app.db.models`에 정의, `app.db.session`의 `get_db` 사용

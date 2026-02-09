@@ -7,6 +7,7 @@ import {
   Package, ChevronDown, Bell, MapPin 
 } from 'lucide-react';
 import { useCartStore } from '@/store/cartStore';
+import { useAuthStore } from '@/store/authStore';
 
 const categories = [
   { name: '전체', href: '/products' },
@@ -22,6 +23,8 @@ export default function Header() {
   const [searchQuery, setSearchQuery] = useState('');
   const cartItems = useCartStore((state) => state.items);
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+  const authUser = useAuthStore((state) => state.user);
+  const isAdmin = authUser?.role === 'admin';
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,14 +126,25 @@ export default function Header() {
               </Link>
               
               <div className="h-6 w-px bg-gray-200 mx-2"></div>
-              
-              <Link 
-                href="/login" 
-                className="flex items-center gap-2 px-4 py-2 rounded-full hover:bg-gray-100 transition-colors"
-              >
-                <User className="w-5 h-5 text-gray-600" />
-                <span className="text-sm text-gray-700">로그인</span>
-              </Link>
+              {isAdmin && (
+                <Link
+                  href="/admin"
+                  className="flex items-center gap-2 px-3 py-2 rounded-full bg-primary-100 text-primary-700 hover:bg-primary-200 text-sm font-medium"
+                >
+                  관리자
+                </Link>
+              )}
+              {authUser ? (
+                <Link href="/mypage" className="flex items-center gap-2 px-4 py-2 rounded-full hover:bg-gray-100">
+                  <User className="w-5 h-5 text-gray-600" />
+                  <span className="text-sm text-gray-700">{authUser.name || authUser.email}</span>
+                </Link>
+              ) : (
+                <Link href="/login" className="flex items-center gap-2 px-4 py-2 rounded-full hover:bg-gray-100">
+                  <User className="w-5 h-5 text-gray-600" />
+                  <span className="text-sm text-gray-700">로그인</span>
+                </Link>
+              )}
             </nav>
 
             {/* 모바일 메뉴 버튼 */}

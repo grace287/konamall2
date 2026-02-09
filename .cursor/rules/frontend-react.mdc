@@ -1,0 +1,24 @@
+---
+description: 프론트엔드 Next.js/React/TypeScript 규칙
+globs: frontend/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Frontend (Next.js / React / TypeScript)
+
+## 구조
+- App Router: `src/app/**/page.tsx`, 레이아웃은 `layout.tsx`
+- API 호출: `@/lib/api` (axios 등) 공용 인스턴스 사용
+- 전역 상태: Zustand 등, 필요한 곳만 사용
+
+## 스타일
+- Tailwind CSS 사용, `globals.css`에 공통 변수
+- 반응형: 모바일 우선, `md:`/`lg:` 브레이크포인트 활용
+
+## 폼/검증
+- react-hook-form + zod (또는 resolvers) 사용 시 스키마로 검증 유지
+- 에러 메시지는 사용자 친화적 한글
+
+## 접근성
+- 버튼/링크에 의미 있는 텍스트 또는 aria-label
+- 폼 필드에 label 연결

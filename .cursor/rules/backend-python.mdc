@@ -1,0 +1,23 @@
+---
+description: 백엔드 Python/FastAPI 규칙
+globs: backend/**/*.py
+alwaysApply: false
+---
+
+# Backend (Python / FastAPI)
+
+## 구조
+- `app.api`: 라우터만 두고 비즈니스 로직은 `app.services` 또는 라우터 내 헬퍼로 분리
+- `app.db.models`: SQLAlchemy 모델만, `app.db.session`: 엔진/세션
+- 의존성: `Depends(get_db)`, `Depends(get_current_user)` 사용
+
+## 에러 처리
+- `HTTPException(status_code=..., detail="한글 메시지")` 사용
+- 400: 검증/비즈니스 오류, 401: 인증, 403: 권한, 404: 리소스 없음, 500: 서버 오류
+
+## 비동기
+- 라우터는 `async def` 사용, DB 호출은 동기 SQLAlchemy (Session) 사용 가능
+
+## 테스트
+- `pytest`, `pytest-asyncio`, `httpx` 사용
+- 테스트 DB/Redis는 CI에서 서비스 컨테이너 사용 (`DATABASE_URL`, `REDIS_URL`)

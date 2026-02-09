@@ -32,12 +32,20 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginForm) => {
     setIsLoading(true);
     try {
-      const response = await api.post('/api/users/login', data);
-      setAuth(response.data.user, response.data.access_token);
+      const response = await api.post('/api/users/login/json', {
+        email: data.email,
+        password: data.password,
+      });
+      const { user, access_token } = response.data;
+      setAuth(
+        { id: user.id, email: user.email, name: user.name ?? '', role: user.role },
+        access_token
+      );
       toast.success('로그인 성공! 환영합니다 🎉');
       router.push('/');
-    } catch (error) {
-      toast.error('로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.');
+    } catch (error: any) {
+      const msg = error.response?.data?.detail || '로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.';
+      toast.error(msg);
     } finally {
       setIsLoading(false);
     }

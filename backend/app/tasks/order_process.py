@@ -66,11 +66,13 @@ def process_order(self, order_id: int) -> dict:
             if not supplier:
                 continue
             
-            # ExternalOrder 생성
+            # ExternalOrder 생성 (001: order_item_id 필수, 002: order_id 추가)
+            first_item = items[0]
             external_order = ExternalOrder(
+                order_item_id=first_item.id,
                 order_id=order_id,
                 supplier_id=supplier_id,
-                status=ExternalOrderStatus.PENDING
+                status=ExternalOrderStatus.PENDING,
             )
             db.add(external_order)
             db.flush()

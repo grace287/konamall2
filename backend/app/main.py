@@ -2,14 +2,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from app.api import products, orders, users, suppliers, cart, payments
+from app.api import products, orders, users, suppliers, cart, payments, admin
 from app.core.config import settings
 from app.db.session import engine
 from app.db import models
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    from app.core.config import ensure_production_secret
+    ensure_production_secret()
     print("🚀 KonaMall API Starting...")
     yield
     # Shutdown
@@ -40,6 +41,7 @@ app.include_router(users.router, prefix="/api/users", tags=["Users"])
 app.include_router(suppliers.router, prefix="/api", tags=["Suppliers"])
 app.include_router(cart.router, prefix="/api", tags=["Cart"])
 app.include_router(payments.router, prefix="/api", tags=["Payments"])
+app.include_router(admin.router, prefix="/api", tags=["Admin"])
 
 
 @app.get("/")

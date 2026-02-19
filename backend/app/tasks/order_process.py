@@ -124,7 +124,6 @@ def process_order(self, order_id: int) -> dict:
                 external_order.status = ExternalOrderStatus.FAILED
                 external_order.error_message = str(e)
                 external_order.attempts += 1
-                external_order.last_attempt_at = datetime.utcnow()
                 
                 result["external_orders"].append({
                     "supplier_id": supplier_id,
@@ -233,7 +232,6 @@ def process_single_external_order(self, external_order_id: int) -> dict:
         ext_order.external_order_id = response.get("order_id")
         ext_order.status = ExternalOrderStatus.ORDERED
         ext_order.raw_response = response
-        ext_order.last_attempt_at = datetime.utcnow()
         
         db.commit()
         
@@ -247,7 +245,6 @@ def process_single_external_order(self, external_order_id: int) -> dict:
         logger.error(f"Failed to process external order {external_order_id}: {e}")
         if 'ext_order' in locals():
             ext_order.attempts += 1
-            ext_order.last_attempt_at = datetime.utcnow()
             ext_order.error_message = str(e)
             db.commit()
         raise self.retry(exc=e)
@@ -291,7 +288,16 @@ def update_all_order_statuses() -> dict:
                     
                     # Shipment 생성 (없으면)
                     if not ext_order.shipments:
+                        shipment_order_id = ext_order.order_id or (
+                            ext_order.order_item.order_id if ext_order.order_item else None
+                        )
+                        if not shipment_order_id:
+                            logger.warning(
+                                f"Skipping shipment create for external order {ext_order.id}: missing order_id"
+                            )
+                            continue
                         shipment = Shipment(
+                            order_id=shipment_order_id,
                             external_order_id=ext_order.id,
                             tracking_number=status_data.get("tracking_number"),
                             courier=status_data.get("courier"),
@@ -369,7 +375,7 @@ def update_shipment_tracking() -> dict:
                     # 중복 체크
                     existing = db.query(ShipmentEvent).filter(
                         ShipmentEvent.shipment_id == shipment.id,
-                        ShipmentEvent.occurred_at == event_data.get("time")
+                        ShipmentEvent.event_time == event_data.get("time")
                     ).first()
                     
                     if not existing:
@@ -378,7 +384,7 @@ def update_shipment_tracking() -> dict:
                             status=event_data.get("status"),
                             description=event_data.get("description"),
                             location=event_data.get("location"),
-                            occurred_at=event_data.get("time")
+                            event_time=event_data.get("time")
                         )
                         db.add(event)
                 
@@ -389,8 +395,6 @@ def update_shipment_tracking() -> dict:
                     shipment.delivered_at = datetime.utcnow()
                 elif current_status == "out_for_delivery":
                     shipment.status = ShipmentStatus.OUT_FOR_DELIVERY
-                
-                shipment.last_checked_at = datetime.utcnow()
                 updated += 1
                 
             except Exception as e:

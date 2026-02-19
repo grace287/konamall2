@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { api } from '@/lib/api';
+import { getBackendAvailable } from '@/lib/services';
 import toast from 'react-hot-toast';
 import { AxiosError } from 'axios';
 import {
@@ -87,6 +88,12 @@ export default function SignupPage() {
     const email = data.email.trim().toLowerCase();
     if (name.length < 2) {
       toast.error('이름을 2자 이상 입력해주세요.');
+      return;
+    }
+
+    const backendOk = await getBackendAvailable();
+    if (!backendOk) {
+      toast.error('서버에 연결할 수 없습니다. 백엔드를 실행한 뒤 다시 시도해주세요.');
       return;
     }
 

@@ -1,10 +1,47 @@
 import { api } from './api';
-import type { 
-  Product, 
-  ProductListResponse, 
-  CartResponse, 
-  Category 
+import type {
+  Product,
+  ProductListResponse,
+  CartResponse,
+  Category,
 } from '@/types';
+
+// 백엔드 연결 여부 캐시 + 동시 호출 시 단일 요청만 수행
+// 기본값: /health 호출 안 함(상품은 DummyJSON). NEXT_PUBLIC_USE_BACKEND=true 일 때만 헬스 체크 → ERR_CONNECTION_REFUSED 방지
+let backendAvailable: boolean | null = null;
+let healthCheckPromise: Promise<boolean> | null = null;
+
+function shouldCheckBackend(): boolean {
+  const v = process.env.NEXT_PUBLIC_USE_BACKEND;
+  return v === 'true' || v === '1';
+}
+
+export async function getBackendAvailable(): Promise<boolean> {
+  if (backendAvailable !== null) return backendAvailable;
+  if (!shouldCheckBackend()) {
+    backendAvailable = false;
+    return false;
+  }
+  if (healthCheckPromise) return healthCheckPromise;
+  healthCheckPromise = (async () => {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2500);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/health`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      backendAvailable = res.ok;
+      return backendAvailable;
+    } catch (_) {
+      backendAvailable = false;
+      return false;
+    } finally {
+      healthCheckPromise = null;
+    }
+  })();
+  return healthCheckPromise;
+}
 
 // ============ Products API ============
 export const productsApi = {
@@ -139,53 +176,15 @@ export const cartApi = {
 };
 
 // ============ Categories API ============
-// 백엔드에는 /api/categories 가 없고 /api/products/categories/list (문자열 배열)만 있음.
-// 실패 시(백엔드 미실행 등) 정적 CATEGORIES 반환으로 콘솔 에러·연결 거부 방지.
+// 백엔드 미실행 시에도 콘솔 ERR_CONNECTION_REFUSED 방지: 네트워크 호출 없이 정적 목록만 반환.
 export const categoriesApi = {
   getAll: async (): Promise<Category[]> => {
-    try {
-      const list = await productsApi.getCategories();
-      if (list && list.length > 0) {
-        return list.map((name, i) => {
-          const slug = (name || '').toLowerCase().replace(/\s+/g, '-').replace(/&/g, '');
-          const match = CATEGORIES.find(
-            (c) => c.slug === slug || c.name.toLowerCase() === (name || '').toLowerCase()
-          );
-          return (
-            match || {
-              id: i + 1,
-              name: name || '',
-              name_ko: name || '',
-              slug: slug || `cat-${i}`,
-              icon: '🏷️',
-              color: 'bg-gray-100',
-            }
-          );
-        });
-      }
-    } catch (_) {
-      // 연결 거부 등 시 정적 목록 사용
-    }
     return [...CATEGORIES];
   },
 
   getBySlug: async (slug: string): Promise<Category> => {
     const found = CATEGORIES.find((c) => c.slug === slug);
-    if (found) return found;
-    try {
-      const list = await productsApi.getCategories();
-      const name = list?.find((c) => c.toLowerCase().replace(/\s+/g, '-') === slug);
-      if (name)
-        return {
-          id: 0,
-          name,
-          name_ko: name,
-          slug,
-          icon: '🏷️',
-          color: 'bg-gray-100',
-        };
-    } catch (_) {}
-    return { id: 0, name: slug, name_ko: slug, slug, icon: '🏷️', color: 'bg-gray-100' };
+    return found ?? { id: 0, name: slug, name_ko: slug, slug, icon: '🏷️', color: 'bg-gray-100' };
   },
 };
 

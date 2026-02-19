@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import ProductCard from './ProductCard';
-import { productsApi, formatPrice } from '@/lib/services';
+import { productsApi, formatPrice, getBackendAvailable } from '@/lib/services';
 import type { Product } from '@/types';
 
 interface ProductGridProps {
@@ -69,24 +69,26 @@ export default function ProductGrid({ limit = 8, category, search, columns = 4 }
     const fetchProducts = async () => {
       setLoading(true);
       setError(null);
-      
-      try {
-        // 먼저 실제 API 호출 시도
-        const response = await productsApi.getProducts({
-          limit,
-          category: category !== 'all' ? category : undefined,
-          search,
-        });
-        
-        if (response.items && response.items.length > 0) {
-          setProducts(response.items);
-          return;
+
+      const useBackend = await getBackendAvailable();
+      if (useBackend) {
+        try {
+          const response = await productsApi.getProducts({
+            limit,
+            category: category !== 'all' ? category : undefined,
+            search,
+          });
+          if (response.items && response.items.length > 0) {
+            setProducts(response.items);
+            setLoading(false);
+            return;
+          }
+        } catch (_) {
+          // 백엔드 사용 불가로 전환 후 폴백으로 진행
         }
-      } catch (apiError) {
-        console.log('API 호출 실패, DummyJSON 폴백 사용:', apiError);
       }
 
-      // 폴백: DummyJSON API 사용
+      // 폴백: DummyJSON API 사용 (백엔드 미실행 또는 응답 없음)
       try {
         let url = `https://dummyjson.com/products?limit=${limit}`;
         

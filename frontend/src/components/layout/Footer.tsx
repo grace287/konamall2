@@ -112,11 +112,12 @@ export default function Footer() {
           <div>
             <h4 className="text-white font-semibold mb-4">고객지원</h4>
             <ul className="space-y-2 text-sm">
+              <li><Link href="/help" className="hover:text-primary-400 transition-colors">고객센터</Link></li>
               <li><Link href="/help/faq" className="hover:text-primary-400 transition-colors">자주 묻는 질문</Link></li>
+              <li><Link href="/help/notice" className="hover:text-primary-400 transition-colors">공지사항</Link></li>
               <li><Link href="/help/shipping" className="hover:text-primary-400 transition-colors">배송 안내</Link></li>
               <li><Link href="/help/returns" className="hover:text-primary-400 transition-colors">반품/교환</Link></li>
               <li><Link href="/help/contact" className="hover:text-primary-400 transition-colors">1:1 문의</Link></li>
-              <li><Link href="/help/notice" className="hover:text-primary-400 transition-colors">공지사항</Link></li>
             </ul>
           </div>
 

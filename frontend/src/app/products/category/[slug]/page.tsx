@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, Filter, ChevronDown, Grid2X2, Grid3X3, SlidersHorizontal } from 'lucide-react';
 import ProductCard from '@/components/product/ProductCard';
-import { productsApi, categoriesApi, formatPrice } from '@/lib/services';
+import { productsApi, categoriesApi, formatPrice, getBackendAvailable } from '@/lib/services';
 import type { Product, Category } from '@/types';
 
 type SortOption = 'latest' | 'price_low' | 'price_high' | 'popular';
@@ -36,13 +36,13 @@ export default function CategoryPage() {
       setError(null);
       
       try {
-        // 먼저 실제 API 시도
-        const [productsData, categoriesData] = await Promise.all([
-          productsApi.getAll({ category: slug, page, limit: pageSize }).catch(() => null),
-          categoriesApi.getAll().catch(() => [])
-        ]);
-        
-        if (productsData && productsData.items) {
+        const categoriesData = await categoriesApi.getAll();
+        const useBackend = await getBackendAvailable();
+        let productsData: { items?: Product[]; total?: number } | null = null;
+        if (useBackend) {
+          productsData = await productsApi.getAll({ category: slug, page, limit: pageSize }).catch(() => null) as any;
+        }
+        if (productsData && productsData.items && productsData.items.length > 0) {
           setProducts(productsData.items);
           setTotalCount(productsData.total);
           
@@ -57,8 +57,7 @@ export default function CategoryPage() {
             description: '' 
           });
         } else {
-          // 폴백: DummyJSON
-          console.log('API 호출 실패, DummyJSON 폴백 사용');
+          // 폴백: DummyJSON (백엔드 미실행 또는 데이터 없음)
           const response = await fetch(
             `https://dummyjson.com/products/category/${slug}?limit=${pageSize}&skip=${(page - 1) * pageSize}`
           );

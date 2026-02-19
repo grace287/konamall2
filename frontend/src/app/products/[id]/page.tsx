@@ -9,7 +9,7 @@ import {
   Check, Clock, Package, AlertCircle
 } from 'lucide-react';
 import { useCartStore } from '@/store/cartStore';
-import { productsApi, formatPrice, calculateDiscount } from '@/lib/services';
+import { productsApi, formatPrice, calculateDiscount, getBackendAvailable } from '@/lib/services';
 import type { Product, ProductVariant } from '@/types';
 import toast from 'react-hot-toast';
 
@@ -32,59 +32,64 @@ export default function ProductDetailPage() {
   useEffect(() => {
     const fetchProduct = async () => {
       if (!productId) return;
-      
+
       setLoading(true);
       setError(null);
-      
-      try {
-        // 먼저 실제 API 호출 시도
-        const data = await productsApi.getProduct(productId);
-        setProduct(data);
-        // 첫 번째 variant 자동 선택
-        if (data.variants && data.variants.length > 0) {
-          setSelectedVariant(data.variants[0]);
-        }
-      } catch (apiError) {
-        console.log('API 호출 실패, DummyJSON 폴백 사용');
-        
-        // 폴백: DummyJSON
+
+      const loadFromDummy = async () => {
+        const response = await fetch(`https://dummyjson.com/products/${productId}`);
+        if (!response.ok) throw new Error('Product not found');
+        const dummyProduct = await response.json();
+        const exchangeRate = 1350;
+        const priceKrw = Math.round(dummyProduct.price * exchangeRate);
+        const originalPriceKrw = Math.round(priceKrw / (1 - (dummyProduct.discountPercentage || 0) / 100));
+        return {
+          id: dummyProduct.id,
+          external_id: `dummy-${dummyProduct.id}`,
+          title: dummyProduct.title,
+          title_ko: dummyProduct.title,
+          description: dummyProduct.description,
+          description_ko: dummyProduct.description,
+          price_original: originalPriceKrw,
+          price_final: priceKrw,
+          currency: 'KRW',
+          stock: dummyProduct.stock ?? 0,
+          is_active: true,
+          category: dummyProduct.category,
+          tags: [dummyProduct.brand].filter(Boolean),
+          shipping_days_min: 7,
+          shipping_days_max: 14,
+          images: (dummyProduct.images || []).map((url: string, idx: number) => ({
+            id: idx,
+            product_id: dummyProduct.id,
+            url,
+            is_main: idx === 0,
+            sort_order: idx,
+          })),
+          created_at: new Date().toISOString(),
+        } as Product;
+      };
+
+      const useBackend = await getBackendAvailable();
+      if (useBackend) {
         try {
-          const response = await fetch(`https://dummyjson.com/products/${productId}`);
-          if (!response.ok) throw new Error('Product not found');
-          
-          const dummyProduct = await response.json();
-          const exchangeRate = 1350;
-          const priceKrw = Math.round(dummyProduct.price * exchangeRate);
-          const originalPriceKrw = Math.round(priceKrw / (1 - dummyProduct.discountPercentage / 100));
-          
-          setProduct({
-            id: dummyProduct.id,
-            external_id: `dummy-${dummyProduct.id}`,
-            title: dummyProduct.title,
-            title_ko: dummyProduct.title,
-            description: dummyProduct.description,
-            description_ko: dummyProduct.description,
-            price_original: originalPriceKrw,
-            price_final: priceKrw,
-            currency: 'KRW',
-            stock: dummyProduct.stock,
-            is_active: true,
-            category: dummyProduct.category,
-            tags: [dummyProduct.brand],
-            shipping_days_min: 7,
-            shipping_days_max: 14,
-            images: dummyProduct.images.map((url: string, idx: number) => ({
-              id: idx,
-              product_id: dummyProduct.id,
-              url,
-              is_main: idx === 0,
-              sort_order: idx,
-            })),
-            created_at: new Date().toISOString(),
-          });
-        } catch (fallbackError) {
-          setError('상품을 찾을 수 없습니다.');
+          const data = await productsApi.getProduct(productId);
+          setProduct(data);
+          if (data.variants && data.variants.length > 0) {
+            setSelectedVariant(data.variants[0]);
+          }
+          setLoading(false);
+          return;
+        } catch (_) {
+          // 백엔드 오류 시 DummyJSON으로
         }
+      }
+
+      try {
+        const data = await loadFromDummy();
+        setProduct(data);
+      } catch (_) {
+        setError('상품을 찾을 수 없습니다.');
       } finally {
         setLoading(false);
       }

@@ -2,10 +2,12 @@ from typing import Optional
 from .base import BaseConnector
 from .temu import TemuConnector
 from .aliexpress import AliExpressConnector
+from .amazon import AmazonConnector
 
 CONNECTOR_MAP = {
     "temu": TemuConnector,
     "aliexpress": AliExpressConnector,
+    "amazon": AmazonConnector,
 }
 
 

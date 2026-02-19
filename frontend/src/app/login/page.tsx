@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { api } from '@/lib/api';
+import { getBackendAvailable } from '@/lib/services';
 import { useAuthStore } from '@/store/authStore';
 import toast from 'react-hot-toast';
 import { 
@@ -30,6 +31,11 @@ export default function LoginPage() {
   } = useForm<LoginForm>();
 
   const onSubmit = async (data: LoginForm) => {
+    const backendOk = await getBackendAvailable();
+    if (!backendOk) {
+      toast.error('서버에 연결할 수 없습니다. 백엔드를 실행한 뒤 다시 시도해주세요.');
+      return;
+    }
     setIsLoading(true);
     try {
       const response = await api.post('/api/users/login/json', {
@@ -44,7 +50,7 @@ export default function LoginPage() {
       toast.success('로그인 성공! 환영합니다 🎉');
       router.push('/');
     } catch (error: any) {
-      const msg = error.response?.data?.detail || '로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.';
+      const msg = error.response?.data?.detail || (error.response ? '로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.' : '서버에 연결할 수 없습니다.');
       toast.error(msg);
     } finally {
       setIsLoading(false);

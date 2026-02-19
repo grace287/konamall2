@@ -17,12 +17,13 @@ logger = logging.getLogger(__name__)
 
 
 @celery_app.task(bind=True, name="app.tasks.product_sync.sync_supplier_products")
-def sync_supplier_products(self, supplier_id: int) -> dict:
+def sync_supplier_products(self, supplier_id: int, limit: int = 100) -> dict:
     """
     특정 공급자의 상품 동기화
     
     Args:
         supplier_id: 공급자 ID
+        limit: 동기화할 최대 상품 수
     
     Returns:
         동기화 결과 (신규, 업데이트, 실패 수)
@@ -30,6 +31,7 @@ def sync_supplier_products(self, supplier_id: int) -> dict:
     db = SessionLocal()
     result = {
         "supplier_id": supplier_id,
+        "limit": limit,
         "created": 0,
         "updated": 0,
         "failed": 0,
@@ -55,7 +57,8 @@ def sync_supplier_products(self, supplier_id: int) -> dict:
         products_data = connector.fetch_products(
             api_key=supplier.api_key,
             api_secret=supplier.api_secret,
-            config=supplier.config or {}
+            config=supplier.config or {},
+            limit=limit,
         )
         
         for product_data in products_data:

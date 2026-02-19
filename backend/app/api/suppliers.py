@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 
 from app.db.session import get_db
 from app.db.models import Supplier
 from app.schemas.supplier import SupplierType
-from app.connectors import get_connector
+from app.tasks.product_sync import sync_supplier_products
 
 router = APIRouter()
 
@@ -29,7 +29,6 @@ async def get_supplier(supplier_id: int, db: Session = Depends(get_db)):
 @router.post("/{supplier_id}/sync")
 async def sync_products(
     supplier_id: int,
-    background_tasks: BackgroundTasks,
     limit: int = 100,
     db: Session = Depends(get_db)
 ):
@@ -38,10 +37,16 @@ async def sync_products(
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
     
-    # Background task로 동기화 실행
-    # background_tasks.add_task(sync_supplier_products, supplier_id, limit)
-    
-    return {"message": f"Sync started for {supplier.name}", "limit": limit}
+    # Celery 태스크 큐잉
+    task = sync_supplier_products.delay(supplier_id=supplier_id, limit=limit)
+
+    return {
+        "message": f"Sync started for {supplier.name}",
+        "supplier_id": supplier.id,
+        "limit": limit,
+        "task_id": task.id,
+        "status": "queued",
+    }
 
 
 @router.post("/")

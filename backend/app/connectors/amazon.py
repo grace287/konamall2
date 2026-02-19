@@ -1,6 +1,18 @@
+import logging
+import time
+from typing import Any, Dict, List, Optional
+
 import httpx
-from typing import List, Dict, Any, Optional
 from .base import BaseConnector
+from .exceptions import (
+    ConnectorAPIError,
+    ConnectorAuthError,
+    ConnectorRateLimitError,
+    ConnectorResponseError,
+    ConnectorTimeoutError,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class AmazonConnector(BaseConnector):
@@ -11,6 +23,120 @@ class AmazonConnector(BaseConnector):
     """
     
     BASE_URL = "https://webservices.amazon.com"
+    TOKEN_URL = "https://api.amazon.com/auth/o2/token"
+    TIMEOUT_SECONDS = 20
+    MAX_RETRIES = 3
+
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        super().__init__(config)
+        self._access_token: Optional[str] = None
+        self._token_expiry: float = 0
+
+    def _is_test_mode(self, config: Optional[Dict[str, Any]]) -> bool:
+        cfg = config or self.config or {}
+        return bool(cfg.get("test_mode"))
+
+    def _refresh_access_token(self, api_key: str, api_secret: str) -> str:
+        refresh_token = self.config.get("refresh_token")
+        if not refresh_token:
+            raise ConnectorAuthError("Amazon refresh_token is required in connector config")
+        with httpx.Client(timeout=self.TIMEOUT_SECONDS) as client:
+            response = client.post(
+                self.TOKEN_URL,
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh_token,
+                    "client_id": api_key,
+                    "client_secret": api_secret,
+                },
+            )
+        if response.status_code >= 400:
+            raise ConnectorAuthError(f"Amazon token refresh failed ({response.status_code})")
+        data = response.json()
+        token = data.get("access_token")
+        if not token:
+            raise ConnectorAuthError("Amazon token response missing access_token")
+        self._access_token = token
+        self._token_expiry = time.time() + int(data.get("expires_in", 3600)) - 60
+        return token
+
+    def _get_access_token(self, api_key: str, api_secret: str) -> str:
+        if self._access_token and time.time() < self._token_expiry:
+            return self._access_token
+        return self._refresh_access_token(api_key, api_secret)
+
+    def _request(self, method: str, path: str, *, api_key: str, api_secret: str, params: Optional[Dict[str, Any]] = None, json_body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        url = f"{self.BASE_URL}{path}"
+
+        for attempt in range(1, self.MAX_RETRIES + 1):
+            token = self._get_access_token(api_key, api_secret)
+            headers = {
+                "x-amz-access-token": token,
+                "Content-Type": "application/json",
+            }
+            try:
+                with httpx.Client(timeout=self.TIMEOUT_SECONDS) as client:
+                    response = client.request(method, url, params=params, json=json_body, headers=headers)
+
+                if response.status_code == 401:
+                    if attempt < self.MAX_RETRIES:
+                        self._access_token = None
+                        logger.warning("Amazon auth expired, refreshing token: path=%s", path)
+                        continue
+                    raise ConnectorAuthError("Amazon authentication failed")
+                if response.status_code == 429:
+                    logger.warning("Amazon rate limit: path=%s attempt=%s", path, attempt)
+                    if attempt == self.MAX_RETRIES:
+                        raise ConnectorRateLimitError("Amazon API rate limited")
+                    time.sleep(min(2 ** attempt, 8))
+                    continue
+                if response.status_code >= 500 and attempt < self.MAX_RETRIES:
+                    logger.warning("Amazon upstream error: status=%s path=%s attempt=%s", response.status_code, path, attempt)
+                    time.sleep(min(2 ** attempt, 8))
+                    continue
+
+                response.raise_for_status()
+                data = response.json()
+                if not isinstance(data, dict):
+                    raise ConnectorResponseError("Amazon API returned non-object JSON")
+                return data
+            except httpx.TimeoutException as exc:
+                logger.warning("Amazon timeout: path=%s attempt=%s", path, attempt)
+                if attempt == self.MAX_RETRIES:
+                    raise ConnectorTimeoutError("Amazon API timed out") from exc
+            except httpx.HTTPStatusError as exc:
+                code = exc.response.status_code
+                raise ConnectorAPIError(
+                    f"Amazon API error ({code})",
+                    status_code=code,
+                    retryable=code >= 500,
+                ) from exc
+            except httpx.HTTPError as exc:
+                if attempt == self.MAX_RETRIES:
+                    raise ConnectorAPIError("Amazon transport error", retryable=True) from exc
+        raise ConnectorAPIError("Amazon request retries exhausted", retryable=True)
+
+    def _normalize_product(self, raw: Dict[str, Any]) -> Dict[str, Any]:
+        summaries = (raw.get("summaries") or [{}])[0]
+        offers = (raw.get("offers") or [{}])[0]
+        variants = raw.get("variations", [])
+        return {
+            "external_id": str(raw.get("asin") or ""),
+            "price": float((offers.get("listingPrice") or {}).get("amount", 0)),
+            "stock": int((offers.get("availability") or {}).get("quantity", 0)),
+            "variants": [
+                {
+                    "id": str(v.get("asin") or ""),
+                    "sku": v.get("sku"),
+                    "name": v.get("title"),
+                    "price": float(v.get("price", 0)),
+                    "stock": int(v.get("stock", 0)),
+                }
+                for v in variants
+            ],
+            "title": summaries.get("itemName"),
+            "images": [img.get("link") for img in raw.get("images", []) if img.get("link")],
+        }
     
     def fetch_products(
         self,
@@ -20,54 +146,25 @@ class AmazonConnector(BaseConnector):
         limit: int = 100,
         category: str = None
     ) -> List[Dict]:
-        """상품 목록 가져오기 (스텁)"""
-        sample_products = []
-        categories = {
-            "electronics": ["Echo Dot", "Fire TV Stick", "Kindle", "Ring Doorbell"],
-            "books": ["Bestseller Novel", "Tech Guide", "Cookbook", "Self-Help Book"],
-            "home": ["Robot Vacuum", "Air Purifier", "Smart Plug", "LED Bulbs"]
+        if self._is_test_mode(config):
+            return self._fetch_products_test_data(limit)
+
+        query = ((config or {}).get("query") or "best seller")
+        params = {
+            "marketplaceIds": self.config.get("marketplace_id", "ATVPDKIKX0DER"),
+            "keywords": query,
+            "pageSize": min(limit, 20),
         }
-        
-        items = categories.get(category, categories["electronics"])
-        
-        for i in range(min(limit, 10)):
-            item_name = items[i % len(items)]
-            sample_products.append({
-                "external_id": f"amz-B0{i+1:07d}",
-                "id": f"amz-B0{i+1:07d}",
-                "asin": f"B0{i+1:07d}",
-                "title": f"Amazon {item_name} - Generation {i+1}",
-                "title_ko": f"아마존 {item_name} - {i+1}세대",
-                "price": 29.99 + i * 10,
-                "list_price": 39.99 + i * 10,  # 정가
-                "stock": 1000 - i * 50,
-                "images": [f"https://picsum.photos/400/400?random={200+i+j}" for j in range(5)],
-                "description": f"Premium quality {item_name.lower()} from Amazon",
-                "description_ko": f"아마존의 프리미엄 품질 {item_name.lower()}",
-                "category": category or "electronics",
-                "brand": "Amazon Basics" if i % 2 == 0 else "Third Party",
-                "url": f"https://www.amazon.com/dp/B0{i+1:07d}",
-                "rating": 4.0 + (i % 10) / 10,
-                "review_count": 1000 + i * 500,
-                "prime_eligible": i % 2 == 0,
-                "variants": [
-                    {
-                        "id": f"amz-B0{i+1:07d}-v1",
-                        "sku": f"AMZ-{i+1}-STD",
-                        "name": "Standard",
-                        "price": 29.99 + i * 10,
-                        "stock": 500
-                    },
-                    {
-                        "id": f"amz-B0{i+1:07d}-v2",
-                        "sku": f"AMZ-{i+1}-PRO",
-                        "name": "Pro",
-                        "price": 49.99 + i * 10,
-                        "stock": 300
-                    }
-                ]
-            })
-        return sample_products
+        if category:
+            params["category"] = category
+        data = self._request("GET", "/catalog/2022-04-01/items", api_key=api_key, api_secret=api_secret, params=params)
+        products = data.get("items", [])
+        if not isinstance(products, list):
+            raise ConnectorResponseError("Amazon products payload is invalid")
+        return [self._normalize_product(p) for p in products]
+
+    def _fetch_products_test_data(self, limit: int) -> List[Dict]:
+        return [{"external_id": f"amz-test-{i}", "price": 30.0 + i, "stock": 10, "variants": []} for i in range(min(limit, 5))]
     
     def get_product(
         self,
@@ -97,13 +194,25 @@ class AmazonConnector(BaseConnector):
         api_secret: str,
         order_data: Dict
     ) -> Dict:
-        """외부 주문 생성"""
-        import uuid
+        if self._is_test_mode(order_data.get("config") if isinstance(order_data, dict) else None):
+            return {"order_id": "AMZ-TEST-ORDER", "status": "placed"}
+
+        data = self._request(
+            "POST",
+            "/orders/v0/orders",
+            api_key=api_key,
+            api_secret=api_secret,
+            json_body=order_data,
+        )
+        payload = data.get("payload", data)
+        order_id = payload.get("AmazonOrderId") or payload.get("order_id")
+        if not order_id:
+            raise ConnectorResponseError("Amazon order response missing order id")
         return {
-            "order_id": f"AMZ-{uuid.uuid4().hex[:12].upper()}",
-            "status": "placed",
-            "estimated_delivery": "3-5 business days",
-            "message": "Order placed successfully via Amazon"
+            "order_id": str(order_id),
+            "status": payload.get("OrderStatus", "placed"),
+            "estimated_delivery": payload.get("LatestShipDate"),
+            "raw": data,
         }
     
     def cancel_order(
@@ -126,13 +235,23 @@ class AmazonConnector(BaseConnector):
         api_secret: str,
         order_id: str
     ) -> Dict:
-        """주문 상태 조회"""
+        data = self._request(
+            "GET",
+            f"/orders/v0/orders/{order_id}",
+            api_key=api_key,
+            api_secret=api_secret,
+        )
+        payload = data.get("payload", data)
+        status = payload.get("OrderStatus") or payload.get("status")
+        if not status:
+            raise ConnectorResponseError("Amazon order status response missing status")
         return {
             "order_id": order_id,
-            "status": "shipped",
-            "tracking_number": "1Z999AA10123456784",
-            "courier": "UPS",
-            "estimated_delivery": "2024-01-15"
+            "status": status,
+            "tracking_number": payload.get("TrackingNumber"),
+            "courier": payload.get("CarrierCode"),
+            "estimated_delivery": payload.get("LatestDeliveryDate"),
+            "raw": data,
         }
     
     def get_tracking_info(

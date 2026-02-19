@@ -1,6 +1,20 @@
+import hashlib
+import hmac
+import logging
+import time
+from typing import Any, Dict, List, Optional
+
 import httpx
-from typing import List, Dict, Any, Optional
 from .base import BaseConnector
+from .exceptions import (
+    ConnectorAPIError,
+    ConnectorAuthError,
+    ConnectorRateLimitError,
+    ConnectorResponseError,
+    ConnectorTimeoutError,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class AliExpressConnector(BaseConnector):
@@ -10,6 +24,91 @@ class AliExpressConnector(BaseConnector):
     https://developers.aliexpress.com/
     """
     
+    BASE_URL = "https://api-sg.aliexpress.com"
+    TIMEOUT_SECONDS = 15
+    MAX_RETRIES = 3
+
+    def _is_test_mode(self, config: Optional[Dict[str, Any]]) -> bool:
+        cfg = config or self.config or {}
+        return bool(cfg.get("test_mode"))
+
+    def _build_auth_params(self, api_key: str, api_secret: str, method: str, extra: Dict[str, Any]) -> Dict[str, Any]:
+        if not api_key or not api_secret:
+            raise ConnectorAuthError("AliExpress api_key/api_secret is required")
+
+        params: Dict[str, Any] = {
+            "app_key": api_key,
+            "method": method,
+            "timestamp": int(time.time() * 1000),
+            "format": "json",
+            "v": "2.0",
+            "sign_method": "sha256",
+            **extra,
+        }
+        sign_source = "".join(f"{k}{params[k]}" for k in sorted(params))
+        params["sign"] = hmac.new(api_secret.encode("utf-8"), sign_source.encode("utf-8"), hashlib.sha256).hexdigest().upper()
+        return params
+
+    def _request(self, *, api_key: str, api_secret: str, method: str, extra_params: Dict[str, Any]) -> Dict[str, Any]:
+        params = self._build_auth_params(api_key, api_secret, method, extra_params)
+        for attempt in range(1, self.MAX_RETRIES + 1):
+            try:
+                with httpx.Client(timeout=self.TIMEOUT_SECONDS) as client:
+                    response = client.get(f"{self.BASE_URL}/sync", params=params)
+
+                if response.status_code == 401:
+                    raise ConnectorAuthError("AliExpress authentication failed")
+                if response.status_code == 429:
+                    logger.warning("AliExpress rate limited: method=%s attempt=%s", method, attempt)
+                    if attempt == self.MAX_RETRIES:
+                        raise ConnectorRateLimitError("AliExpress API rate limited")
+                    time.sleep(min(2 ** attempt, 8))
+                    continue
+                if response.status_code >= 500 and attempt < self.MAX_RETRIES:
+                    logger.warning("AliExpress upstream error: status=%s method=%s attempt=%s", response.status_code, method, attempt)
+                    time.sleep(min(2 ** attempt, 8))
+                    continue
+
+                response.raise_for_status()
+                data = response.json()
+                if not isinstance(data, dict):
+                    raise ConnectorResponseError("AliExpress API returned non-object JSON")
+                return data
+            except httpx.TimeoutException as exc:
+                logger.warning("AliExpress timeout: method=%s attempt=%s", method, attempt)
+                if attempt == self.MAX_RETRIES:
+                    raise ConnectorTimeoutError("AliExpress API timed out") from exc
+            except httpx.HTTPStatusError as exc:
+                code = exc.response.status_code
+                raise ConnectorAPIError(
+                    f"AliExpress API error ({code})",
+                    status_code=code,
+                    retryable=code >= 500,
+                ) from exc
+            except httpx.HTTPError as exc:
+                if attempt == self.MAX_RETRIES:
+                    raise ConnectorAPIError("AliExpress transport error", retryable=True) from exc
+        raise ConnectorAPIError("AliExpress request retries exhausted", retryable=True)
+
+    def _normalize_product(self, raw: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "external_id": str(raw.get("product_id") or raw.get("item_id") or ""),
+            "price": float(raw.get("sale_price", raw.get("price", 0))),
+            "stock": int(raw.get("available_stock", raw.get("stock", 0))),
+            "variants": [
+                {
+                    "id": str(v.get("sku_id") or ""),
+                    "sku": v.get("sku_attr"),
+                    "name": v.get("sku_name"),
+                    "price": float(v.get("sku_price", 0)),
+                    "stock": int(v.get("sku_stock", 0)),
+                }
+                for v in raw.get("sku_infos", [])
+            ],
+            "title": raw.get("subject"),
+            "images": raw.get("images", []),
+        }
+
     def fetch_products(
         self,
         api_key: str = None,
@@ -18,55 +117,26 @@ class AliExpressConnector(BaseConnector):
         limit: int = 100,
         category: str = None
     ) -> List[Dict]:
-        """상품 목록 가져오기 (스텁)"""
-        sample_products = []
-        categories = {
-            "fashion": ["Casual T-Shirt", "Summer Dress", "Denim Jacket", "Sports Shoes"],
-            "electronics": ["USB Cable", "Phone Case", "LED Light Strip", "Power Bank"],
-            "home": ["Storage Box", "Wall Sticker", "Kitchen Tool", "Cushion Cover"]
+        if self._is_test_mode(config):
+            return self._fetch_products_test_data(limit)
+
+        payload = {
+            "page_size": min(limit, 200),
+            "category_id": category,
         }
-        
-        items = categories.get(category, categories["electronics"])
-        
-        for i in range(min(limit, 10)):
-            item_name = items[i % len(items)]
-            sample_products.append({
-                "external_id": f"ali-{i+1}",
-                "id": f"ali-{i+1}",
-                "title": f"{item_name} {i+1}",
-                "title_ko": f"알리익스프레스 {item_name} {i+1}",
-                "price": 3.99 + i * 2,
-                "stock": 500 - i * 30,
-                "images": [f"https://picsum.photos/400/400?random={100+i+j}" for j in range(4)],
-                "description": f"High quality {item_name.lower()} with fast shipping",
-                "description_ko": f"빠른 배송의 고품질 {item_name.lower()}",
-                "category": category or "electronics",
-                "url": f"https://www.aliexpress.com/item/{1000000+i}.html",
-                "variants": [
-                    {
-                        "id": f"ali-{i+1}-v1",
-                        "sku": f"ALI-{i+1}-S",
-                        "name": "Small",
-                        "price": 3.99 + i * 2,
-                        "stock": 200
-                    },
-                    {
-                        "id": f"ali-{i+1}-v2",
-                        "sku": f"ALI-{i+1}-M",
-                        "name": "Medium",
-                        "price": 4.99 + i * 2,
-                        "stock": 200
-                    },
-                    {
-                        "id": f"ali-{i+1}-v3",
-                        "sku": f"ALI-{i+1}-L",
-                        "name": "Large",
-                        "price": 5.99 + i * 2,
-                        "stock": 100
-                    }
-                ]
-            })
-        return sample_products
+        data = self._request(
+            api_key=api_key,
+            api_secret=api_secret,
+            method="aliexpress.ds.product.get",
+            extra_params={k: v for k, v in payload.items() if v is not None},
+        )
+        products = data.get("result", {}).get("products", [])
+        if not isinstance(products, list):
+            raise ConnectorResponseError("AliExpress products payload is invalid")
+        return [self._normalize_product(p) for p in products]
+
+    def _fetch_products_test_data(self, limit: int) -> List[Dict]:
+        return [{"external_id": f"ali-test-{i}", "price": 2.5 + i, "stock": 30, "variants": []} for i in range(min(limit, 5))]
     
     def get_product(
         self,
@@ -91,13 +161,20 @@ class AliExpressConnector(BaseConnector):
         api_secret: str,
         order_data: Dict
     ) -> Dict:
-        """외부 주문 생성"""
-        import uuid
-        return {
-            "order_id": f"ALI-{uuid.uuid4().hex[:10].upper()}",
-            "status": "placed",
-            "message": "Order placed successfully"
-        }
+        if self._is_test_mode(order_data.get("config") if isinstance(order_data, dict) else None):
+            return {"order_id": "ALI-TEST-ORDER", "status": "placed"}
+
+        data = self._request(
+            api_key=api_key,
+            api_secret=api_secret,
+            method="aliexpress.trade.order.create",
+            extra_params={"param_order_request": order_data},
+        )
+        result = data.get("result", {})
+        order_id = result.get("order_id")
+        if not order_id:
+            raise ConnectorResponseError("AliExpress order response missing order_id")
+        return {"order_id": str(order_id), "status": result.get("status", "placed"), "raw": data}
     
     def cancel_order(
         self,
@@ -118,12 +195,22 @@ class AliExpressConnector(BaseConnector):
         api_secret: str,
         order_id: str
     ) -> Dict:
-        """주문 상태 조회"""
+        data = self._request(
+            api_key=api_key,
+            api_secret=api_secret,
+            method="aliexpress.trade.order.get",
+            extra_params={"order_id": order_id},
+        )
+        result = data.get("result", {})
+        status = result.get("order_status")
+        if not status:
+            raise ConnectorResponseError("AliExpress order status missing order_status")
         return {
             "order_id": order_id,
-            "status": "shipped",
-            "tracking_number": "LP00123456789CN",
-            "courier": "China Post"
+            "status": status,
+            "tracking_number": result.get("tracking_number"),
+            "courier": result.get("logistics_provider"),
+            "raw": data,
         }
     
     def get_tracking_info(

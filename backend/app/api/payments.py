@@ -95,6 +95,10 @@ async def approve_payment(
     db: Session = Depends(get_db),
 ):
     """결제 승인 (PG 리다이렉트 후 pg_token으로 호출). 성공 시 주문에 paid_at, payment_id 반영."""
+    order = db.query(Order).filter(Order.id == body.order_id, Order.user_id == current_user.id).first()
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="주문을 찾을 수 없습니다.")
+
     gateway = get_payment_gateway(
         body.gateway,
         admin_key=settings.KAKAO_PAY_ADMIN_KEY or "",
@@ -103,12 +107,16 @@ async def approve_payment(
     )
     if not gateway:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="지원하지 않는 결제 수단입니다.")
-    result = await gateway.approve(payment_id=body.payment_id, pg_token=body.pg_token)
+    result = await gateway.approve(
+        payment_id=body.payment_id,
+        pg_token=body.pg_token,
+        order_id=str(body.order_id),
+        user_id=str(current_user.id),
+    )
     if not result.success:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result.message)
     from datetime import datetime
     from app.db.models import OrderStatus
-    order = db.query(Order).filter(Order.id == body.order_id, Order.user_id == current_user.id).first()
     if order and not order.paid_at:
         order.payment_id = result.payment_id
         order.paid_at = datetime.utcnow()

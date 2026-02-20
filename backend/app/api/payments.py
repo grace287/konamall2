@@ -15,6 +15,19 @@ from app.services.payment import get_payment_gateway
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
 
+def _normalize_payment_url(data: dict | None) -> str | None:
+    """결제사별 prepare 응답 URL 키를 단일 payment_url로 정규화."""
+    if not data:
+        return None
+    return (
+        data.get("payment_url")
+        or data.get("next_redirect_pc_url")
+        or data.get("next_redirect_mobile_url")
+        or data.get("next_redirect_app_url")
+        or data.get("redirectUrl")
+    )
+
+
 class PrepareIn(BaseModel):
     order_id: int
     gateway: str = "kakao_pay"  # kakao_pay | naver_pay
@@ -61,7 +74,18 @@ async def prepare_payment(
     )
     if not result.success:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result.message)
-    return {"payment_id": result.payment_id, "payment_url": result.data.get("payment_url"), "message": result.message}
+    payment_url = _normalize_payment_url(result.data)
+    if not payment_url:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="결제 준비 응답에 리다이렉트 URL이 없습니다.",
+        )
+    return {
+        "payment_id": result.payment_id,
+        "payment_url": payment_url,
+        "message": result.message,
+        "gateway": body.gateway,
+    }
 
 
 @router.post("/approve")

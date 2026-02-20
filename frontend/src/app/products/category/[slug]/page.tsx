@@ -44,7 +44,7 @@ export default function CategoryPage() {
         }
         if (productsData && productsData.items && productsData.items.length > 0) {
           setProducts(productsData.items);
-          setTotalCount(productsData.total);
+          setTotalCount(productsData.total ?? 0);
           
           // 카테고리 정보 찾기
           const foundCategory = categoriesData.find(
